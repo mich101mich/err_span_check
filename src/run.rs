@@ -3,13 +3,13 @@ use crate::dependencies::{self, Dependency, EditionOrInherit};
 use crate::directory::Directory;
 use crate::env::Update;
 use crate::error::{Error, Result};
-use crate::expand::{expand_globs, ExpandedTest};
+use crate::expand::{ExpandedTest, expand_globs};
 use crate::flock::Lock;
 use crate::manifest::{Bin, Manifest, Name, Package, Workspace};
 use crate::message::{self, Fail, Warn};
 use crate::normalize::{self, Context, Variations};
 use crate::path::CanonicalPath;
-use crate::{features, Expected, Runner, Test};
+use crate::{Expected, Runner, Test, features};
 use serde_derive::Deserialize;
 use std::collections::{BTreeMap as Map, BTreeSet as Set};
 use std::env;
@@ -98,10 +98,10 @@ impl Runner {
 
         print!("\n\n");
 
-        if report.failures > 0 && project.name != "trybuild-tests" {
+        if report.failures > 0 && project.name != "err_span_check-tests" {
             panic!("{} of {} tests failed", report.failures, len);
         }
-        if report.created_wip > 0 && project.name != "trybuild-tests" {
+        if report.created_wip > 0 && project.name != "err_span_check-tests" {
             panic!(
                 "successfully created new stderr files for {} test cases",
                 report.created_wip,
@@ -148,7 +148,7 @@ impl Runner {
             .collect();
 
         let crate_name = &source_manifest.package.name;
-        let project_dir = path!(target_dir / "tests" / "trybuild" / crate_name /);
+        let project_dir = path!(target_dir / "tests" / "err_span_check" / crate_name /);
         fs::create_dir_all(&project_dir)?;
 
         let project_name = format!("{}-tests", crate_name);
@@ -520,13 +520,13 @@ impl ExpandedTest {
     }
 }
 
-// Filter which test cases are run by trybuild.
+// Filter which test cases are run by err_span_check.
 //
-//     $ cargo test -- ui trybuild=tuple_structs.rs
+//     $ cargo test -- ui err_span_check=tuple_structs.rs
 //
-// The first argument after `--` must be the trybuild test name i.e. the name of
-// the function that has the #[test] attribute and calls trybuild. That's to get
-// Cargo to run the test at all. The next argument starting with `trybuild=`
+// The first argument after `--` must be the err_span_check test name i.e. the name of
+// the function that has the #[test] attribute and calls err_span_check. That's to get
+// Cargo to run the test at all. The next argument starting with `err_span_check=`
 // provides a filename filter. Only test cases whose filename contains the
 // filter string will be run.
 #[allow(clippy::needless_collect)] // false positive https://github.com/rust-lang/rust-clippy/issues/5991
@@ -534,7 +534,7 @@ fn filter(tests: &mut Vec<ExpandedTest>) {
     let filters = env::args_os()
         .flat_map(OsString::into_string)
         .filter_map(|mut arg| {
-            const PREFIX: &str = "trybuild=";
+            const PREFIX: &str = "err_span_check=";
             if arg.starts_with(PREFIX) && arg != PREFIX {
                 Some(arg.split_off(PREFIX.len()))
             } else {

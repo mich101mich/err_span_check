@@ -2,7 +2,7 @@ test_normalize! {
     INPUT="tests/ui/not-repeatable.rs"
 "
 error[E0599]: no method named `quote_into_iter` found for struct `std::net::Ipv4Addr` in the current scope
-  --> /git/trybuild/test_suite/tests/ui/not-repeatable.rs:6:13
+  --> /git/err_span_check/test_suite/tests/ui/not-repeatable.rs:6:13
    |
 6  |     let _ = quote! { #(#ip)* };
    |             ^^^^^^^^^^^^^^^^^^ method not found in `std::net::Ipv4Addr`

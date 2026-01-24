@@ -1,4 +1,4 @@
-//! [![github]](https://github.com/dtolnay/trybuild)&ensp;[![crates-io]](https://crates.io/crates/trybuild)&ensp;[![docs-rs]](https://docs.rs/trybuild)
+//! [![github]](https://github.com/dtolnay/err_span_check)&ensp;[![crates-io]](https://crates.io/crates/err_span_check)&ensp;[![docs-rs]](https://docs.rs/err_span_check)
 //!
 //! [github]: https://img.shields.io/badge/github-8da0cb?style=for-the-badge&labelColor=555555&logo=github
 //! [crates-io]: https://img.shields.io/badge/crates.io-fc8d62?style=for-the-badge&labelColor=555555&logo=rust
@@ -21,19 +21,19 @@
 //! aspects of the user's interaction with a library outside of what would be
 //! covered by ordinary API tests.
 //!
-//! Nothing here is specific to macros; trybuild would work equally well for
+//! Nothing here is specific to macros; err_span_check would work equally well for
 //! testing misuse of non-macro APIs.
 //!
 //! <br>
 //!
 //! # Compile-fail tests
 //!
-//! A minimal trybuild setup looks like this:
+//! A minimal err_span_check setup looks like this:
 //!
 //! ```
 //! #[test]
 //! fn ui() {
-//!     let t = trybuild::TestCases::new();
+//!     let t = err_span_check::TestCases::new();
 //!     t.compile_fail("tests/ui/*.rs");
 //! }
 //! ```
@@ -80,7 +80,7 @@
 //! ```
 //! #[test]
 //! fn ui() {
-//!     let t = trybuild::TestCases::new();
+//!     let t = err_span_check::TestCases::new();
 //!     t.pass("tests/01-parse-header.rs");
 //!     t.pass("tests/02-parse-body.rs");
 //!     t.compile_fail("tests/03-expand-four-errors.rs");
@@ -227,7 +227,7 @@
 //! components = ["rust-src"]
 //! ```
 
-#![doc(html_root_url = "https://docs.rs/trybuild/1.0.114")]
+#![doc(html_root_url = "https://docs.rs/err_span_check/1.0.114")]
 #![cfg_attr(not(check_cfg), allow(unexpected_cfgs))]
 #![allow(
     clippy::collapsible_if,
@@ -269,7 +269,6 @@ mod path;
 
 mod cargo;
 mod dependencies;
-mod diff;
 mod directory;
 mod env;
 mod error;

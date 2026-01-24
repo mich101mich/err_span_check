@@ -74,8 +74,8 @@ normalizations! {
 ///
 /// This is a set rather than just one normalized output in order to avoid
 /// breaking existing tests when introducing new normalization steps. Someone
-/// may have saved stderr snapshots with an older version of trybuild, and those
-/// tests need to continue to pass with newer versions of trybuild.
+/// may have saved stderr snapshots with an older version of err_span_check, and those
+/// tests need to continue to pass with newer versions of err_span_check.
 ///
 /// There is one "preferred" variation which is what we print when the stderr
 /// file is absent or not a match.

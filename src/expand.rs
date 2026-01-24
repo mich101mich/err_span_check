@@ -1,6 +1,6 @@
+use crate::Test;
 use crate::error::{Error, Result};
 use crate::manifest::Name;
-use crate::Test;
 use std::collections::BTreeMap as Map;
 use std::path::PathBuf;
 
@@ -56,7 +56,7 @@ impl ExpandedTestSet {
         }
 
         let index = self.vec.len();
-        let name = Name(format!("trybuild{:03}", index));
+        let name = Name(format!("err_span_check{:03}", index));
         self.path_to_index.insert(test.path.clone(), index);
         self.vec.push(ExpandedTest {
             name,

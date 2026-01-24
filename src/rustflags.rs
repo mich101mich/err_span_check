@@ -3,7 +3,7 @@ use std::env;
 const IGNORED_LINTS: &[&str] = &["dead_code"];
 
 pub(crate) fn toml() -> toml::Value {
-    let mut rustflags = vec!["--cfg", "trybuild", "--verbose"];
+    let mut rustflags = vec!["--cfg", "err_span_check", "--verbose"];
 
     for &lint in IGNORED_LINTS {
         rustflags.push("-A");

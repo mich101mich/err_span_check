@@ -1,7 +1,5 @@
-use crate::diff::{Diff, Render};
 use crate::error::Error;
-use crate::{normalize, term, Expected, Test};
-use std::env;
+use crate::{Expected, Test, normalize, term};
 use std::path::Path;
 use std::process::Output;
 use termcolor::Color::{self, *};
@@ -40,7 +38,7 @@ pub(crate) fn test_fail(err: Error) {
 
 pub(crate) fn no_tests_enabled() {
     term::color(Yellow);
-    println!("There are no trybuild tests enabled yet.");
+    println!("There are no err_span_check tests enabled yet.");
     term::reset();
 }
 
@@ -120,19 +118,13 @@ pub(crate) fn mismatch(expected: &str, actual: &str) {
     println!("mismatch");
     term::reset();
     println!();
-    let diff = if env::var_os("TERM").map_or(true, |term| term == "dumb") {
-        // No diff in dumb terminal or when TERM is unset.
-        None
-    } else {
-        Diff::compute(expected, actual)
-    };
     term::bold_color(Blue);
     println!("EXPECTED:");
-    snippet_diff(Blue, expected, diff.as_ref());
+    snippet(Blue, expected);
     println!();
     term::bold_color(Red);
     println!("ACTUAL OUTPUT:");
-    snippet_diff(Red, actual, diff.as_ref());
+    snippet(Red, actual);
     print!("note: If the ");
     term::color(Red);
     print!("actual output");
@@ -206,36 +198,12 @@ pub(crate) fn warnings(warnings: &str) {
 }
 
 fn snippet(color: Color, content: &str) {
-    snippet_diff(color, content, None);
-}
+    term::color(color);
+    println!("{:┈<60}", "");
 
-fn snippet_diff(color: Color, content: &str, diff: Option<&Diff>) {
-    fn dotted_line() {
-        println!("{}", "┈".repeat(60));
-    }
+    print!("{content}");
 
     term::color(color);
-    dotted_line();
-
-    match diff {
-        Some(diff) => {
-            for chunk in diff.iter(content) {
-                match chunk {
-                    Render::Common(s) => {
-                        term::color(color);
-                        print!("{}", s);
-                    }
-                    Render::Unique(s) => {
-                        term::bold_color(color);
-                        print!("\x1B[7m{}", s);
-                    }
-                }
-            }
-        }
-        None => print!("{}", content),
-    }
-
-    term::color(color);
-    dotted_line();
+    println!("{:┈<60}", "");
     term::reset();
 }

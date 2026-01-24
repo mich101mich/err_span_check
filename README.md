@@ -1,19 +1,20 @@
-Trybuild
+Error Span Checker
 ========
 
-[<img alt="github" src="https://img.shields.io/badge/github-dtolnay/trybuild-8da0cb?style=for-the-badge&labelColor=555555&logo=github" height="20">](https://github.com/dtolnay/trybuild)
-[<img alt="crates.io" src="https://img.shields.io/crates/v/trybuild.svg?style=for-the-badge&color=fc8d62&logo=rust" height="20">](https://crates.io/crates/trybuild)
-[<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-trybuild-66c2a5?style=for-the-badge&labelColor=555555&logo=docs.rs" height="20">](https://docs.rs/trybuild)
-[<img alt="build status" src="https://img.shields.io/github/actions/workflow/status/dtolnay/trybuild/ci.yml?branch=master&style=for-the-badge" height="20">](https://github.com/dtolnay/trybuild/actions?query=branch%3Amaster)
+[<img alt="github" src="https://img.shields.io/badge/github-dtolnay/err_span_check-8da0cb?style=for-the-badge&labelColor=555555&logo=github" height="20">](https://github.com/dtolnay/err_span_check)
+[<img alt="crates.io" src="https://img.shields.io/crates/v/err_span_check.svg?style=for-the-badge&color=fc8d62&logo=rust" height="20">](https://crates.io/crates/err_span_check)
+[<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-err_span_check-66c2a5?style=for-the-badge&labelColor=555555&logo=docs.rs" height="20">](https://docs.rs/err_span_check)
+[<img alt="build status" src="https://img.shields.io/github/actions/workflow/status/dtolnay/err_span_check/ci.yml?branch=master&style=for-the-badge" height="20">](https://github.com/dtolnay/err_span_check/actions?query=branch%3Amaster)
 
-Trybuild is a test harness for invoking rustc on a set of test cases and
-asserting that any resulting error messages are the ones intended.
+A test harness for checking and comparing compiler errors with a focus on error spans. Useful mainly for procedural
+macros, but can also be used in other contexts.
 
-<p align="center">
-<a href="#compile-fail-tests">
-<img src="https://user-images.githubusercontent.com/1940490/57186574-76469e00-6e96-11e9-8cb5-b63b657170c9.png" width="600">
-</a>
-</p>
+This crate is a fork of [err_span_check] with inline and in-file error message syntax rather than separate `.stderr` files. Passing tests have been removed for simplicity.
+
+[err_span_check]: https://crates.io/crates/err_span_check
+
+
+
 
 Such tests are commonly useful for testing error reporting involving procedural
 macros. We would write test cases triggering either errors detected by the macro
@@ -24,24 +25,24 @@ This style of testing is sometimes called *ui tests* because they test aspects
 of the user's interaction with a library outside of what would be covered by
 ordinary API tests.
 
-Nothing here is specific to macros; trybuild would work equally well for testing
+Nothing here is specific to macros; err_span_check would work equally well for testing
 misuse of non-macro APIs.
 
 ```toml
 [dev-dependencies]
-trybuild = "1.0"
+err_span_check = "1.0"
 ```
 
 <br>
 
 ## Compile-fail tests
 
-A minimal trybuild setup looks like this:
+A minimal err_span_check setup looks like this:
 
 ```rust
 #[test]
 fn ui() {
-    let t = trybuild::TestCases::new();
+    let t = err_span_check::TestCases::new();
     t.compile_fail("tests/ui/*.rs");
 }
 ```
@@ -73,9 +74,9 @@ A compile\_fail test that fails to fail to compile is also a failure.
 
 To test just one source file, use:
 ```
-cargo test -- ui trybuild=example.rs
+cargo test -- ui err_span_check=example.rs
 ```
-where `ui` is the name of the `#[test]` function that invokes `trybuild`, and
+where `ui` is the name of the `#[test]` function that invokes `err_span_check`, and
 `example.rs` is the name of the file to test.
 
 <br>
@@ -93,7 +94,7 @@ my [procedural macros workshop at Rust Latam][workshop].
 ```rust
 #[test]
 fn ui() {
-    let t = trybuild::TestCases::new();
+    let t = err_span_check::TestCases::new();
     t.pass("tests/01-parse-header.rs");
     t.pass("tests/02-parse-body.rs");
     t.compile_fail("tests/03-expand-four-errors.rs");

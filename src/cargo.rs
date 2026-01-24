@@ -54,7 +54,7 @@ fn cargo(project: &Project) -> Command {
 fn cargo_target_dir(project: &Project) -> impl Iterator<Item = (&'static str, PathBuf)> {
     iter::once((
         "CARGO_TARGET_DIR",
-        path!(project.target_dir / "tests" / "trybuild"),
+        path!(project.target_dir / "tests" / "err_span_check"),
     ))
 }
 
@@ -200,7 +200,7 @@ fn target() -> Vec<&'static str> {
     // When --target flag is passed, cargo does not pass RUSTFLAGS to rustc when
     // building proc-macro and build script even if the host and target triples
     // are the same. Therefore, if we always pass --target to cargo, tools such
-    // as coverage that require RUSTFLAGS do not work for tests run by trybuild.
+    // as coverage that require RUSTFLAGS do not work for tests run by err_span_check.
     //
     // To avoid that problem, do not pass --target to cargo if we know that it
     // has not been passed.
