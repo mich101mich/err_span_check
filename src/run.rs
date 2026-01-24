@@ -9,7 +9,7 @@ use crate::manifest::{Bin, Manifest, Name, Package, Workspace};
 use crate::message::{self, Fail, Warn};
 use crate::normalize::{self, Context, Variations};
 use crate::path::CanonicalPath;
-use crate::{Expected, Runner, Test, features};
+use crate::{Runner, Test, features};
 use serde_derive::Deserialize;
 use std::collections::{BTreeMap as Map, BTreeSet as Set};
 use std::env;
@@ -26,8 +26,6 @@ pub(crate) struct Project {
     pub target_dir: Directory,
     pub name: String,
     update: Update,
-    pub has_pass: bool,
-    has_compile_fail: bool,
     pub features: Option<Vec<String>>,
     pub workspace: Directory,
     pub path_dependencies: Vec<PathDependency>,
@@ -72,7 +70,7 @@ impl Runner {
 
         if tests.is_empty() {
             message::no_tests_enabled();
-        } else if project.keep_going && !project.has_pass {
+        } else if project.keep_going {
             report = match self.run_all(&project, tests) {
                 Ok(failures) => failures,
                 Err(err) => {
@@ -115,15 +113,6 @@ impl Runner {
             workspace_root: workspace,
             packages,
         } = cargo::metadata()?;
-
-        let mut has_pass = false;
-        let mut has_compile_fail = false;
-        for e in tests {
-            match e.test.expected {
-                Expected::Pass => has_pass = true,
-                Expected::CompileFail => has_compile_fail = true,
-            }
-        }
 
         let source_dir = cargo::manifest_dir()?;
         let source_manifest = dependencies::get_manifest(&source_dir)?;
@@ -171,8 +160,6 @@ impl Runner {
             target_dir,
             name: project_name,
             update: Update::env()?,
-            has_pass,
-            has_compile_fail,
             features,
             workspace,
             path_dependencies,
@@ -335,8 +322,7 @@ impl Runner {
         let fallback = Stderr::default();
 
         for mut t in tests {
-            let show_expected = false;
-            message::begin_test(&t.test, show_expected);
+            message::begin_test(&t.test);
 
             if t.error.is_none() {
                 t.error = check_exists(&t.test.path).err();
@@ -345,7 +331,13 @@ impl Runner {
             if t.error.is_none() {
                 let src_path = CanonicalPath::new(&project.source_dir.join(&t.test.path));
                 let this_test = parsed.stderrs.get(&src_path).unwrap_or(&fallback);
-                match t.test.check(project, &t.name, this_test, "") {
+                match t.test.check_compile_fail(
+                    project,
+                    &t.name,
+                    this_test.success,
+                    "",
+                    &this_test.stderr,
+                ) {
                     Ok(Outcome::Passed) => {}
                     Ok(Outcome::CreatedWip) => report.created_wip += 1,
                     Err(error) => t.error = Some(error),
@@ -369,8 +361,7 @@ enum Outcome {
 
 impl Test {
     fn run(&self, project: &Project, name: &Name) -> Result<Outcome> {
-        let show_expected = project.has_pass && project.has_compile_fail;
-        message::begin_test(self, show_expected);
+        message::begin_test(self);
         check_exists(&self.path)?;
 
         let mut path_map = Map::new();
@@ -381,53 +372,13 @@ impl Test {
         let parsed = parse_cargo_json(project, &output.stdout, &path_map);
         let fallback = Stderr::default();
         let this_test = parsed.stderrs.get(&src_path).unwrap_or(&fallback);
-        self.check(project, name, this_test, &parsed.stdout)
-    }
-
-    fn check(
-        &self,
-        project: &Project,
-        name: &Name,
-        result: &Stderr,
-        build_stdout: &str,
-    ) -> Result<Outcome> {
-        let check = match self.expected {
-            Expected::Pass => Test::check_pass,
-            Expected::CompileFail => Test::check_compile_fail,
-        };
-
-        check(
-            self,
+        self.check_compile_fail(
             project,
             name,
-            result.success,
-            build_stdout,
-            &result.stderr,
+            this_test.success,
+            &parsed.stdout,
+            &this_test.stderr,
         )
-    }
-
-    fn check_pass(
-        &self,
-        project: &Project,
-        name: &Name,
-        success: bool,
-        build_stdout: &str,
-        variations: &Variations,
-    ) -> Result<Outcome> {
-        let preferred = variations.preferred();
-        if !success {
-            message::failed_to_build(preferred);
-            return Err(Error::CargoFail);
-        }
-
-        let mut output = cargo::run_test(project, name)?;
-        output.stdout.splice(..0, build_stdout.bytes());
-        message::output(preferred, &output);
-        if output.status.success() {
-            Ok(Outcome::Passed)
-        } else {
-            Err(Error::RunFailed)
-        }
     }
 
     fn check_compile_fail(
@@ -512,8 +463,7 @@ impl ExpandedTest {
         match self.error {
             None => self.test.run(project, &self.name),
             Some(error) => {
-                let show_expected = false;
-                message::begin_test(&self.test, show_expected);
+                message::begin_test(&self.test);
                 Err(error)
             }
         }

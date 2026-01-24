@@ -18,7 +18,6 @@ pub(crate) enum Error {
     Pattern(PatternError),
     ProjectDir,
     ReadStderr(io::Error),
-    RunFailed,
     ShouldNotHaveCompiled,
     TomlDe(toml::de::Error),
     TomlSer(toml::ser::Error),
@@ -40,12 +39,14 @@ impl Display for Error {
             Io(e) => write!(f, "{}", e),
             Metadata(e) => write!(f, "failed to read cargo metadata: {}", e),
             Mismatch => write!(f, "compiler error does not match expected error"),
-            NoWorkspaceManifest => write!(f, "Cargo.toml uses edition.workspace=true, but no edition found in workspace's manifest"),
+            NoWorkspaceManifest => write!(
+                f,
+                "Cargo.toml uses edition.workspace=true, but no edition found in workspace's manifest"
+            ),
             Open(path, e) => write!(f, "{}: {}", path.display(), e),
             Pattern(e) => write!(f, "{}", e),
             ProjectDir => write!(f, "failed to determine name of project dir"),
             ReadStderr(e) => write!(f, "failed to read stderr file: {}", e),
-            RunFailed => write!(f, "execution of the test case was unsuccessful"),
             ShouldNotHaveCompiled => {
                 write!(f, "expected test case to fail to compile, but it succeeded")
             }
@@ -65,10 +66,7 @@ impl Error {
     pub fn already_printed(&self) -> bool {
         use self::Error::*;
 
-        matches!(
-            self,
-            CargoFail | Mismatch | RunFailed | ShouldNotHaveCompiled
-        )
+        matches!(self, CargoFail | Mismatch | ShouldNotHaveCompiled)
     }
 }
 

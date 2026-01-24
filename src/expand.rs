@@ -19,9 +19,8 @@ pub(crate) fn expand_globs(tests: &[Test]) -> Vec<ExpandedTest> {
         match test.path.to_str() {
             Some(utf8) if utf8.contains('*') => match glob(utf8) {
                 Ok(paths) => {
-                    let expected = test.expected;
                     for path in paths {
-                        set.insert(Test { path, expected }, None, true);
+                        set.insert(Test { path }, None, true);
                     }
                 }
                 Err(error) => set.insert(test.clone(), Some(error), false),
@@ -50,7 +49,6 @@ impl ExpandedTestSet {
         if let Some(&i) = self.path_to_index.get(&test.path) {
             let prev = &mut self.vec[i];
             if prev.is_from_glob {
-                prev.test.expected = test.expected;
                 return;
             }
         }

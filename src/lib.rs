@@ -6,7 +6,7 @@
 //!
 //! <br>
 //!
-//! #### &emsp;A compiler diagnostics testing library in just 3 functions.
+//! #### &emsp;A compiler diagnostics testing library in just 2 functions.
 //!
 //! Trybuild is a test harness for invoking rustc on a set of test cases and
 //! asserting that any resulting error messages are the ones intended.
@@ -34,7 +34,7 @@
 //! #[test]
 //! fn ui() {
 //!     let t = err_span_check::TestCases::new();
-//!     t.compile_fail("tests/ui/*.rs");
+//!     t.test("tests/ui/*.rs");
 //! }
 //! ```
 //!
@@ -62,41 +62,6 @@
 //!
 //! <p align="center">
 //! <img src="https://user-images.githubusercontent.com/1940490/57186576-7b0b5200-6e96-11e9-8bfd-2de705125108.png" width="700">
-//! </p>
-//!
-//! <br>
-//!
-//! # Pass tests
-//!
-//! The same test harness is able to run tests that are expected to pass, too.
-//! Ordinarily you would just have Cargo run such tests directly, but being able
-//! to combine modes like this could be useful for workshops in which
-//! participants work through test cases enabling one at a time. Trybuild was
-//! originally developed for my [procedural macros workshop at Rust
-//! Latam][workshop].
-//!
-//! [workshop]: https://github.com/dtolnay/proc-macro-workshop
-//!
-//! ```
-//! #[test]
-//! fn ui() {
-//!     let t = err_span_check::TestCases::new();
-//!     t.pass("tests/01-parse-header.rs");
-//!     t.pass("tests/02-parse-body.rs");
-//!     t.compile_fail("tests/03-expand-four-errors.rs");
-//!     t.pass("tests/04-paste-ident.rs");
-//!     t.pass("tests/05-repeat-section.rs");
-//!     //t.pass("tests/06-make-work-in-function.rs");
-//!     //t.pass("tests/07-init-array.rs");
-//!     //t.compile_fail("tests/08-ident-span.rs");
-//! }
-//! ```
-//!
-//! Pass tests are considered to succeed if they compile successfully and have a
-//! `main` function that does not panic when the compiled binary is executed.
-//!
-//! <p align="center">
-//! <img src="https://user-images.githubusercontent.com/1940490/57186580-7f376f80-6e96-11e9-9cae-8257609269ef.png" width="700">
 //! </p>
 //!
 //! <br>
@@ -300,13 +265,6 @@ struct Runner {
 #[derive(Clone, Debug)]
 struct Test {
     path: PathBuf,
-    expected: Expected,
-}
-
-#[derive(Copy, Clone, Debug)]
-enum Expected {
-    Pass,
-    CompileFail,
 }
 
 impl TestCases {
@@ -317,17 +275,9 @@ impl TestCases {
         }
     }
 
-    pub fn pass<P: AsRef<Path>>(&self, path: P) {
+    pub fn test<P: AsRef<Path>>(&self, path: P) {
         self.runner.borrow_mut().tests.push(Test {
             path: path.as_ref().to_owned(),
-            expected: Expected::Pass,
-        });
-    }
-
-    pub fn compile_fail<P: AsRef<Path>>(&self, path: P) {
-        self.runner.borrow_mut().tests.push(Test {
-            path: path.as_ref().to_owned(),
-            expected: Expected::CompileFail,
         });
     }
 }
