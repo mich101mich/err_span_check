@@ -167,7 +167,7 @@ pub(crate) fn metadata() -> Result<Metadata> {
         .map_err(Error::Cargo)?;
 
     serde_json::from_slice(&output.stdout).map_err(|err| {
-        print!("{}", String::from_utf8_lossy(&output.stderr));
+        print_col!("{}", String::from_utf8_lossy(&output.stderr));
         Error::Metadata(err)
     })
 }

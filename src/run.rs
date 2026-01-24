@@ -60,7 +60,7 @@ impl Runner {
             panic!("tests failed");
         });
 
-        print!("\n\n");
+        print_col!("\n\n");
 
         let len = tests.len();
         let mut report = Report {
@@ -94,7 +94,7 @@ impl Runner {
             }
         }
 
-        print!("\n\n");
+        print_col!("\n\n");
 
         if report.failures > 0 && project.name != "err_span_check-tests" {
             panic!("{} of {} tests failed", report.failures, len);

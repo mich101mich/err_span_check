@@ -1,7 +1,6 @@
 use crate::error::Error;
-use crate::{Test, normalize, term};
+use crate::{Test, normalize};
 use std::path::Path;
-use termcolor::Color::{self, *};
 
 pub(crate) enum Level {
     Fail,
@@ -10,16 +9,16 @@ pub(crate) enum Level {
 
 pub(crate) use self::Level::*;
 
+const LINE: &str = "------------------------------------------------------------";
+
 pub(crate) fn prepare_fail(err: Error) {
     if err.already_printed() {
         return;
     }
 
-    term::bold_color(Red);
-    print!("ERROR");
-    term::reset();
-    println!(": {}", err);
-    println!();
+    print_col!(BoldRed => "ERROR");
+    println_col!(": {}", err);
+    println_col!();
 }
 
 pub(crate) fn test_fail(err: Error) {
@@ -27,110 +26,90 @@ pub(crate) fn test_fail(err: Error) {
         return;
     }
 
-    term::bold_color(Red);
-    println!("error");
-    term::color(Red);
-    println!("{}", err);
-    term::reset();
-    println!();
+    println_col!(BoldRed => "error");
+    println_col!(Red => "{}", err);
+    println_col!();
 }
 
 pub(crate) fn no_tests_enabled() {
-    term::color(Yellow);
-    println!("There are no err_span_check tests enabled yet.");
-    term::reset();
+    println_col!(Yellow => "There are no err_span_check tests enabled yet.");
 }
 
 pub(crate) fn ok() {
-    term::color(Green);
-    println!("ok");
-    term::reset();
+    println_col!(Green => "ok");
 }
 
 pub(crate) fn begin_test(test: &Test) {
-    let display_name = test.path.as_os_str().to_string_lossy();
+    let display_name = test.path.display();
 
-    print!("test ");
-    term::bold();
-    print!("{}", display_name);
-    term::reset();
-
-    print!(" ... ");
+    print_col!("test ");
+    print_col!(Bold => "{}", display_name);
+    print_col!(" ... ");
 }
 
 pub(crate) fn should_not_have_compiled() {
-    term::bold_color(Red);
-    println!("error");
-    term::color(Red);
-    println!("Expected test case to fail to compile, but it succeeded.");
-    term::reset();
-    println!();
+    println_col!(BoldRed => "error");
+    println_col!(Red => "Expected test case to fail to compile, but it succeeded.");
+    println_col!();
 }
 
 pub(crate) fn write_stderr_wip(wip_path: &Path, stderr_path: &Path, stderr: &str) {
-    let wip_path = wip_path.to_string_lossy();
-    let stderr_path = stderr_path.to_string_lossy();
+    let wip_path = wip_path.display();
+    let stderr_path = stderr_path.display();
 
-    term::bold_color(Yellow);
-    println!("wip");
-    println!();
-    print!("NOTE");
-    term::reset();
-    println!(": writing the following output to `{}`.", wip_path);
-    println!(
-        "Move this file to `{}` to accept it as correct.",
-        stderr_path,
-    );
-    snippet(Yellow, stderr);
-    println!();
+    println_col!(BoldYellow => "wip");
+    println_col!();
+    print_col!(BoldYellow => "NOTE");
+    println_col!(": writing the following output to `{wip_path}`.");
+    println_col!("Move this file to `{stderr_path}` to accept it as correct.");
+    println_col!(Yellow => "{LINE}\n{stderr}\n{LINE}");
+    println_col!();
 }
 
 pub(crate) fn overwrite_stderr(stderr_path: &Path, stderr: &str) {
-    let stderr_path = stderr_path.to_string_lossy();
+    let stderr_path = stderr_path.display();
 
-    term::bold_color(Yellow);
-    println!("wip");
-    println!();
-    print!("NOTE");
-    term::reset();
-    println!(": writing the following output to `{}`.", stderr_path);
-    snippet(Yellow, stderr);
-    println!();
+    println_col!(BoldYellow => "wip");
+    println_col!();
+    print_col!(BoldYellow => "NOTE");
+    println_col!(": writing the following output to `{stderr_path}`.");
+    println_col!(Yellow => "{LINE}\n{stderr}\n{LINE}");
+    println_col!();
 }
 
 pub(crate) fn mismatch(expected: &str, actual: &str) {
-    term::bold_color(Red);
-    println!("mismatch");
-    term::reset();
-    println!();
-    term::bold_color(Blue);
-    println!("EXPECTED:");
-    snippet(Blue, expected);
-    println!();
-    term::bold_color(Red);
-    println!("ACTUAL OUTPUT:");
-    snippet(Red, actual);
-    print!("note: If the ");
-    term::color(Red);
-    print!("actual output");
-    term::reset();
-    println!(" is the correct output you can bless it by rerunning");
-    println!("      your test with the environment variable TRYBUILD=overwrite");
-    println!();
+    println_col!(BoldRed => "mismatch");
+    println_col!();
+    println_col!(BoldBlue => "EXPECTED:");
+    println_col!(Blue => "{LINE}\n{expected}\n{LINE}");
+    println_col!();
+    println_col!(BoldRed => "ACTUAL OUTPUT:");
+    println_col!(Red => "{LINE}\n{actual}\n{LINE}");
+    print_col!("note: If the ");
+    print_col!(Red => "actual output");
+    println_col!(" is the correct output you can bless it by rerunning");
+    println_col!("      your test with the environment variable TRYBUILD=overwrite");
+    println_col!();
 }
 
 pub(crate) fn fail_output(level: Level, stdout: &str) {
-    let color = match level {
-        Fail => Red,
-        Warn => Yellow,
-    };
-
-    if !stdout.is_empty() {
-        term::bold_color(color);
-        println!("STDOUT:");
-        snippet(color, &normalize::trim(stdout));
-        println!();
+    if stdout.is_empty() {
+        println_col!();
+        return;
     }
+
+    let normalized = normalize::trim(stdout);
+    match level {
+        Fail => {
+            println_col!(BoldRed => "STDOUT:");
+            println_col!(Red => "{LINE}\n{normalized}\n{LINE}")
+        }
+        Warn => {
+            println_col!(BoldYellow => "STDOUT:");
+            println_col!(Yellow => "{LINE}\n{normalized}\n{LINE}")
+        }
+    };
+    println_col!();
 }
 
 pub(crate) fn warnings(warnings: &str) {
@@ -138,19 +117,7 @@ pub(crate) fn warnings(warnings: &str) {
         return;
     }
 
-    term::bold_color(Yellow);
-    println!("WARNINGS:");
-    snippet(Yellow, warnings);
-    println!();
-}
-
-fn snippet(color: Color, content: &str) {
-    term::color(color);
-    println!("{:┈<60}", "");
-
-    print!("{content}");
-
-    term::color(color);
-    println!("{:┈<60}", "");
-    term::reset();
+    println_col!(BoldYellow => "WARNINGS:");
+    println_col!(Yellow => "{LINE}\n{}\n{LINE}", warnings);
+    println_col!();
 }
