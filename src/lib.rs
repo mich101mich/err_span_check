@@ -229,12 +229,8 @@
 #[macro_use]
 mod term;
 
-#[macro_use]
-mod path;
-
 mod cargo;
 mod dependencies;
-mod directory;
 mod env;
 mod error;
 mod expand;
@@ -244,6 +240,7 @@ mod inherit;
 mod manifest;
 mod message;
 mod normalize;
+mod path;
 mod run;
 mod rustflags;
 

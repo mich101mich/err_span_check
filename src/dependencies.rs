@@ -1,4 +1,3 @@
-use crate::directory::Directory;
 use crate::error::Error;
 use crate::inherit::InheritEdition;
 use crate::manifest::Edition;
@@ -13,7 +12,7 @@ use std::fmt;
 use std::fs;
 use std::path::PathBuf;
 
-pub(crate) fn get_manifest(manifest_dir: &Directory) -> Result<Manifest, Error> {
+pub(crate) fn get_manifest(manifest_dir: &std::path::Path) -> Result<Manifest, Error> {
     let cargo_toml_path = manifest_dir.join("Cargo.toml");
     let mut manifest = (|| {
         let manifest_str = fs::read_to_string(&cargo_toml_path)?;
@@ -32,12 +31,12 @@ pub(crate) fn get_manifest(manifest_dir: &Directory) -> Result<Manifest, Error> 
     Ok(manifest)
 }
 
-pub(crate) fn get_workspace_manifest(manifest_dir: &Directory) -> WorkspaceManifest {
+pub(crate) fn get_workspace_manifest(manifest_dir: &std::path::Path) -> WorkspaceManifest {
     try_get_workspace_manifest(manifest_dir).unwrap_or_default()
 }
 
 pub(crate) fn try_get_workspace_manifest(
-    manifest_dir: &Directory,
+    manifest_dir: &std::path::Path,
 ) -> Result<WorkspaceManifest, Error> {
     let cargo_toml_path = manifest_dir.join("Cargo.toml");
     let manifest_str = fs::read_to_string(cargo_toml_path)?;
@@ -50,14 +49,14 @@ pub(crate) fn try_get_workspace_manifest(
     Ok(manifest)
 }
 
-fn fix_dependencies(dependencies: &mut Map<String, Dependency>, dir: &Directory) {
+fn fix_dependencies(dependencies: &mut Map<String, Dependency>, dir: &std::path::Path) {
     dependencies.remove("err_span_check");
     for dep in dependencies.values_mut() {
-        dep.path = dep.path.as_ref().map(|path| Directory::new(dir.join(path)));
+        dep.path = dep.path.as_ref().map(|path| dir.join(path));
     }
 }
 
-fn fix_patches(patches: &mut Map<String, RegistryPatch>, dir: &Directory) {
+fn fix_patches(patches: &mut Map<String, RegistryPatch>, dir: &std::path::Path) {
     for registry in patches.values_mut() {
         registry.crates.remove("err_span_check");
         for patch in registry.crates.values_mut() {
@@ -66,7 +65,7 @@ fn fix_patches(patches: &mut Map<String, RegistryPatch>, dir: &Directory) {
     }
 }
 
-fn fix_replacements(replacements: &mut Map<String, Patch>, dir: &Directory) {
+fn fix_replacements(replacements: &mut Map<String, Patch>, dir: &std::path::Path) {
     replacements.remove("err_span_check");
     for replacement in replacements.values_mut() {
         replacement.path = replacement.path.as_ref().map(|path| dir.join(path));
@@ -132,7 +131,7 @@ pub(crate) struct Dependency {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub path: Option<Directory>,
+    pub path: Option<PathBuf>,
     #[serde(default, skip_serializing_if = "is_false")]
     pub optional: bool,
     #[serde(rename = "default-features", skip_serializing_if = "Option::is_none")]

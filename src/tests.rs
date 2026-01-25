@@ -12,12 +12,12 @@ macro_rules! test_normalize {
             let context = crate::normalize::Context {
                 krate: "trybuild000",
                 input_file: std::path::Path::new({ "tests/ui/error.rs" $(; $input)? }),
-                source_dir: &crate::directory::Directory::new({ "/git/err_span_check/test_suite" $(; $dir)? }),
-                workspace: &crate::directory::Directory::new({ "/git/err_span_check" $(; $workspace)? }),
-                target_dir: &crate::directory::Directory::new({ "/git/err_span_check/target" $(; $target)? }),
+                source_dir: std::path::Path::new({ "/git/err_span_check/test_suite" $(; $dir)? }),
+                workspace: std::path::Path::new({ "/git/err_span_check" $(; $workspace)? }),
+                target_dir: std::path::Path::new({ "/git/err_span_check/target" $(; $target)? }),
                 path_dependencies: &[crate::run::PathDependency {
                     name: String::from("diesel"),
-                    normalized_path: crate::directory::Directory::new("/home/user/documents/rust/diesel/diesel"),
+                    normalized_path: std::path::PathBuf::from("/home/user/documents/rust/diesel/diesel"),
                 }],
             };
             let original = $original;

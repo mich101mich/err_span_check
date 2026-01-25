@@ -1,4 +1,3 @@
-use crate::directory::Directory;
 use crate::error::{Error, Result};
 use crate::manifest::Name;
 use crate::run::Project;
@@ -12,8 +11,8 @@ use target_triple::TARGET;
 
 #[derive(Deserialize)]
 pub(crate) struct Metadata {
-    pub target_directory: Directory,
-    pub workspace_root: Directory,
+    pub target_directory: PathBuf,
+    pub workspace_root: PathBuf,
     pub packages: Vec<PackageMetadata>,
 }
 
@@ -54,28 +53,28 @@ fn cargo(project: &Project) -> Command {
 fn cargo_target_dir(project: &Project) -> impl Iterator<Item = (&'static str, PathBuf)> {
     iter::once((
         "CARGO_TARGET_DIR",
-        path!(project.target_dir / "tests" / "err_span_check"),
+        project.target_dir.join("tests").join("err_span_check"),
     ))
 }
 
-pub(crate) fn manifest_dir() -> Result<Directory> {
+pub(crate) fn manifest_dir() -> Result<PathBuf> {
     if let Some(manifest_dir) = env::var_os("CARGO_MANIFEST_DIR") {
-        return Ok(Directory::from(manifest_dir));
+        return Ok(PathBuf::from(manifest_dir));
     }
-    let mut dir = Directory::current()?;
+    let mut dir = env::current_dir()?;
     loop {
         if dir.join("Cargo.toml").exists() {
             return Ok(dir);
         }
-        dir = dir.parent().ok_or(Error::ProjectDir)?;
+        dir = dir.parent().ok_or(Error::ProjectDir)?.to_path_buf();
     }
 }
 
 pub(crate) fn build_dependencies(project: &mut Project) -> Result<()> {
     // Try copying or generating lockfile.
-    match File::open(path!(project.workspace / "Cargo.lock")) {
+    match File::open(project.workspace.join("Cargo.lock")) {
         Ok(mut workspace_cargo_lock) => {
-            if let Ok(mut new_cargo_lock) = File::create(path!(project.dir / "Cargo.lock")) {
+            if let Ok(mut new_cargo_lock) = File::create(project.dir.join("Cargo.lock")) {
                 // Not fs::copy in order to avoid producing a read-only destination
                 // file if the source file happens to be read-only.
                 let _ = io::copy(&mut workspace_cargo_lock, &mut new_cargo_lock);

@@ -1,6 +1,5 @@
 use crate::cargo::{self, Metadata, PackageMetadata};
 use crate::dependencies::{self, Dependency, EditionOrInherit};
-use crate::directory::Directory;
 use crate::env::Update;
 use crate::error::{Error, Result};
 use crate::expand::{ExpandedTest, expand_globs};
@@ -21,13 +20,13 @@ use std::str;
 
 #[derive(Debug)]
 pub(crate) struct Project {
-    pub dir: Directory,
-    source_dir: Directory,
-    pub target_dir: Directory,
+    pub dir: PathBuf,
+    source_dir: PathBuf,
+    pub target_dir: PathBuf,
     pub name: String,
     update: Update,
     pub features: Option<Vec<String>>,
-    pub workspace: Directory,
+    pub workspace: PathBuf,
     pub path_dependencies: Vec<PathDependency>,
     manifest: Manifest,
     pub keep_going: bool,
@@ -36,7 +35,7 @@ pub(crate) struct Project {
 #[derive(Debug)]
 pub(crate) struct PathDependency {
     pub name: String,
-    pub normalized_path: Directory,
+    pub normalized_path: PathBuf,
 }
 
 struct Report {
@@ -51,7 +50,7 @@ impl Runner {
 
         let (project, _lock) = (|| {
             let mut project = self.prepare(&tests)?;
-            let lock = Lock::acquire(path!(project.dir / ".lock"))?;
+            let lock = Lock::acquire(project.dir.join(".lock"))?;
             self.write(&mut project)?;
             Ok((project, lock))
         })()
@@ -137,7 +136,10 @@ impl Runner {
             .collect();
 
         let crate_name = &source_manifest.package.name;
-        let project_dir = path!(target_dir / "tests" / "err_span_check" / crate_name /);
+        let project_dir = target_dir
+            .join("tests")
+            .join("err_span_check")
+            .join(crate_name);
         fs::create_dir_all(&project_dir)?;
 
         let project_name = format!("{}-tests", crate_name);
@@ -170,13 +172,13 @@ impl Runner {
 
     fn write(&self, project: &mut Project) -> Result<()> {
         let manifest_toml = toml::to_string(&project.manifest)?;
-        fs::write(path!(project.dir / "Cargo.toml"), manifest_toml)?;
+        fs::write(project.dir.join("Cargo.toml"), manifest_toml)?;
 
         let main_rs = b"\
             #![allow(unused_crate_dependencies, missing_docs)]\n\
             fn main() {}\n\
         ";
-        fs::write(path!(project.dir / "main.rs"), &main_rs[..])?;
+        fs::write(project.dir.join("main.rs"), &main_rs[..])?;
 
         cargo::build_dependencies(project)?;
 
@@ -185,9 +187,9 @@ impl Runner {
 
     fn make_manifest(
         &self,
-        workspace: &Directory,
+        workspace: &Path,
         project_name: &str,
-        source_dir: &Directory,
+        source_dir: &Path,
         packages: &[PackageMetadata],
         tests: &[ExpandedTest],
         source_manifest: dependencies::Manifest,
@@ -223,7 +225,7 @@ impl Runner {
                 crate_name.clone(),
                 Dependency {
                     version: None,
-                    path: Some(source_dir.clone()),
+                    path: Some(source_dir.to_path_buf()),
                     optional: false,
                     default_features: Some(false),
                     features: Vec::new(),
