@@ -12,7 +12,7 @@ pub(crate) struct Context<'a> {
     pub workspace: &'a Path,
     pub input_file: &'a Path,
     pub target_dir: &'a Path,
-    pub path_dependencies: &'a [run::PathDependency],
+    pub path_dependencies: &'a [project::PathDependency],
 }
 
 pub(crate) struct ContextProcessed {

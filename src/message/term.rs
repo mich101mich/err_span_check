@@ -46,10 +46,10 @@ pub(crate) fn lock() -> MutexGuard<'static, Term> {
 macro_rules! print_col {
     ($col: ident => $($args:tt)+) => {{
         use std::io::Write;
-        let mut term = $crate::term::lock();
-        term.color = $crate::term::Colors::$col;
+        let mut term = $crate::message::term::lock();
+        term.color = $crate::message::term::Colors::$col;
         let _ = std::write!(&mut *term, $($args)*);
-        term.color = $crate::term::Colors::Normal;
+        term.color = $crate::message::term::Colors::Normal;
     }};
     ($($args:tt)+) => { print_col!(Normal => $($args)+) };
 }
@@ -58,10 +58,10 @@ macro_rules! print_col {
 macro_rules! println_col {
     ($col:ident => $($args:tt)+) => {{
         use std::io::Write;
-        let mut term = $crate::term::lock();
-        term.color = $crate::term::Colors::$col;
+        let mut term = $crate::message::term::lock();
+        term.color = $crate::message::term::Colors::$col;
         let _ = std::writeln!(&mut *term, $($args)*);
-        term.color = $crate::term::Colors::Normal;
+        term.color = $crate::message::term::Colors::Normal;
     }};
     ($($args:tt)+) => { println_col!(Normal => $($args)+) };
     () => { println_col!(Normal => "") };

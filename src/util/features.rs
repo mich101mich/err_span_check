@@ -1,4 +1,4 @@
-use super::*;
+use crate::*;
 
 #[derive(Deserialize)]
 struct Build {

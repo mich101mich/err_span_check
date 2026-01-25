@@ -1,4 +1,4 @@
-use super::*;
+use crate::*;
 
 #[derive(PartialEq, Debug)]
 pub(crate) enum Update {

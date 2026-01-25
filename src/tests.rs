@@ -15,7 +15,7 @@ macro_rules! test_normalize {
                 source_dir: std::path::Path::new({ "/git/err_span_check/test_suite" $(; $dir)? }),
                 workspace: std::path::Path::new({ "/git/err_span_check" $(; $workspace)? }),
                 target_dir: std::path::Path::new({ "/git/err_span_check/target" $(; $target)? }),
-                path_dependencies: &[crate::run::PathDependency {
+                path_dependencies: &[crate::project::PathDependency {
                     name: String::from("diesel"),
                     normalized_path: std::path::PathBuf::from("/home/user/documents/rust/diesel/diesel"),
                 }],

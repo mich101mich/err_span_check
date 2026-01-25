@@ -1,4 +1,7 @@
-use super::*;
+#[macro_use]
+pub(crate) mod term;
+
+use crate::*;
 
 pub(crate) enum Level {
     Fail,

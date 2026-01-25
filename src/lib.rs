@@ -214,21 +214,21 @@
 //! ```
 
 #[macro_use]
-mod term;
+mod message;
 
 mod cargo;
-mod dependencies;
-mod env;
 mod error;
 mod expand;
-mod features;
-mod flock;
-mod inherit;
 mod manifest;
-mod message;
 mod normalize;
-mod run;
+mod project;
+mod runner;
 mod rustflags;
+mod util {
+    pub(crate) mod env;
+    pub(crate) mod features;
+    pub(crate) mod flock;
+}
 
 pub(crate) use error::{Error, Result};
 

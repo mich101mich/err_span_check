@@ -1,4 +1,4 @@
-use super::{dependencies::*, *};
+use super::*;
 
 #[derive(Serialize, Debug)]
 pub(crate) struct Manifest {
@@ -33,19 +33,6 @@ pub(crate) struct Package {
     pub publish: bool,
 }
 
-#[derive(Serialize, Deserialize, Default, Debug)]
-pub(crate) enum Edition {
-    #[default]
-    #[serde(rename = "2015")]
-    E2015,
-    #[serde(rename = "2018")]
-    E2018,
-    #[serde(rename = "2021")]
-    E2021,
-    #[serde(rename = "2024")]
-    E2024,
-}
-
 #[derive(Serialize, Debug)]
 pub(crate) struct Bin {
     pub name: String,
@@ -56,6 +43,15 @@ pub(crate) struct Bin {
 pub(crate) struct Workspace {
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub dependencies: BTreeMap<String, Dependency>,
+}
+
+impl Serialize for Dependency {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        Dependency::serialize(self, serializer)
+    }
 }
 
 fn serialize_patch<S>(
