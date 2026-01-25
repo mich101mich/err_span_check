@@ -1,3 +1,7 @@
-compile_error!("ERROR");
-
-fn main() {}
+fn main() {
+    let x;
+    {
+        x = &String::new();
+    }
+    println!("{}", x);
+}

@@ -10,7 +10,7 @@ pub(crate) enum Update {
 
 impl Update {
     pub fn env() -> Result<Self> {
-        let Some(var) = env::var_os("TRYBUILD") else {
+        let Some(var) = env::var_os("ERR_SPAN_CHECK") else {
             return Ok(Update::default());
         };
 

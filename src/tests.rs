@@ -10,7 +10,7 @@ macro_rules! test_normalize {
         #[test]
         fn test() {
             let context = crate::normalize::Context {
-                krate: "trybuild000",
+                krate: "err_span_check000",
                 input_file: std::path::Path::new({ "tests/ui/error.rs" $(; $input)? }),
                 source_dir: std::path::Path::new({ "/git/err_span_check/test_suite" $(; $dir)? }),
                 workspace: std::path::Path::new({ "/git/err_span_check" $(; $workspace)? }),

@@ -18,7 +18,7 @@
     rustdoc::unescaped_backticks
 )]
 
-//! [![github]](https://github.com/dtolnay/err_span_check)&ensp;[![crates-io]](https://crates.io/crates/err_span_check)&ensp;[![docs-rs]](https://docs.rs/err_span_check)
+//! [![github]](https://github.com/mich101mich/err_span_check)&ensp;[![crates-io]](https://crates.io/crates/err_span_check)&ensp;[![docs-rs]](https://docs.rs/err_span_check)
 //!
 //! [github]: https://img.shields.io/badge/github-8da0cb?style=for-the-badge&labelColor=555555&logo=github
 //! [crates-io]: https://img.shields.io/badge/crates.io-fc8d62?style=for-the-badge&labelColor=555555&logo=rust
@@ -110,7 +110,7 @@
 //! </p>
 //!
 //! Alternatively, run `cargo test` with the environment variable
-//! `TRYBUILD=overwrite` to skip the *wip* directory and write all compiler
+//! `ERR_SPAN_CHECK=overwrite` to skip the *wip* directory and write all compiler
 //! output directly in place. You'll want to check `git diff` afterward to be
 //! sure the compiler's output is what you had in mind.
 //!

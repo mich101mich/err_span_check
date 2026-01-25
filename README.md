@@ -1,10 +1,10 @@
 Error Span Checker
 ========
 
-[<img alt="github" src="https://img.shields.io/badge/github-dtolnay/err_span_check-8da0cb?style=for-the-badge&labelColor=555555&logo=github" height="20">](https://github.com/dtolnay/err_span_check)
+[<img alt="github" src="https://img.shields.io/badge/github-mich101mich/err_span_check-8da0cb?style=for-the-badge&labelColor=555555&logo=github" height="20">](https://github.com/mich101mich/err_span_check)
 [<img alt="crates.io" src="https://img.shields.io/crates/v/err_span_check.svg?style=for-the-badge&color=fc8d62&logo=rust" height="20">](https://crates.io/crates/err_span_check)
 [<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-err_span_check-66c2a5?style=for-the-badge&labelColor=555555&logo=docs.rs" height="20">](https://docs.rs/err_span_check)
-[<img alt="build status" src="https://img.shields.io/github/actions/workflow/status/dtolnay/err_span_check/ci.yml?branch=master&style=for-the-badge" height="20">](https://github.com/dtolnay/err_span_check/actions?query=branch%3Amaster)
+[<img alt="build status" src="https://img.shields.io/github/actions/workflow/status/mich101mich/err_span_check/ci.yml?branch=master&style=for-the-badge" height="20">](https://github.com/mich101mich/err_span_check/actions?query=branch%3Amaster)
 
 A test harness for checking and comparing compiler errors with a focus on error spans. Useful mainly for procedural
 macros, but can also be used in other contexts.
@@ -106,7 +106,7 @@ directory.
 </p>
 
 Alternatively, run `cargo test` with the environment variable
-`TRYBUILD=overwrite` to skip the *wip* directory and write all compiler output
+`ERR_SPAN_CHECK=overwrite` to skip the *wip* directory and write all compiler output
 directly in place. You'll want to check `git diff` afterward to be sure the
 compiler's output is what you had in mind.
 

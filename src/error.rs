@@ -54,7 +54,7 @@ impl Display for Error {
             TomlSer(e) => write!(f, "{}", e),
             UpdateVar(var) => write!(
                 f,
-                "unrecognized value of TRYBUILD: {:?}",
+                "unrecognized value of ERR_SPAN_CHECK: {:?}",
                 var.to_string_lossy(),
             ),
             WriteStderr(e) => write!(f, "failed to write stderr file: {}", e),

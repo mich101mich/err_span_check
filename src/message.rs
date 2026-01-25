@@ -88,7 +88,7 @@ pub(crate) fn mismatch(expected: &str, actual: &str) {
     print_col!("note: If the ");
     print_col!(Red => "actual output");
     println_col!(" is the correct output you can bless it by rerunning");
-    println_col!("      your test with the environment variable TRYBUILD=overwrite");
+    println_col!("      your test with the environment variable ERR_SPAN_CHECK=overwrite");
     println_col!();
 }
 
