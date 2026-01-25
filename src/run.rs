@@ -7,7 +7,6 @@ use crate::flock::Lock;
 use crate::manifest::{Bin, Manifest, Name, Package, Workspace};
 use crate::message::{self, Fail, Warn};
 use crate::normalize::{self, Context, Variations};
-use crate::path::CanonicalPath;
 use crate::{Runner, Test, features};
 use serde_derive::Deserialize;
 use std::collections::{BTreeMap as Map, BTreeSet as Set};
@@ -315,7 +314,8 @@ impl Runner {
 
         let mut path_map = Map::new();
         for t in &tests {
-            let src_path = CanonicalPath::new(&project.source_dir.join(&t.test.path));
+            let src_path = project.source_dir.join(&t.test.path);
+            let src_path = src_path.canonicalize().unwrap_or(src_path);
             path_map.insert(src_path, (&t.name, &t.test));
         }
 
@@ -331,7 +331,8 @@ impl Runner {
             }
 
             if t.error.is_none() {
-                let src_path = CanonicalPath::new(&project.source_dir.join(&t.test.path));
+                let src_path = project.source_dir.join(&t.test.path);
+                let src_path = src_path.canonicalize().unwrap_or(src_path);
                 let this_test = parsed.stderrs.get(&src_path).unwrap_or(&fallback);
                 match t.test.check_compile_fail(
                     project,
@@ -367,7 +368,8 @@ impl Test {
         check_exists(&self.path)?;
 
         let mut path_map = Map::new();
-        let src_path = CanonicalPath::new(&project.source_dir.join(&self.path));
+        let src_path = project.source_dir.join(&self.path);
+        let src_path = src_path.canonicalize().unwrap_or(src_path);
         path_map.insert(src_path.clone(), (name, self));
 
         let output = cargo::build_test(project, name)?;
@@ -533,7 +535,7 @@ struct RustcMessage {
 
 struct ParsedOutputs {
     stdout: String,
-    stderrs: Map<CanonicalPath, Stderr>,
+    stderrs: Map<PathBuf, Stderr>,
 }
 
 struct Stderr {
@@ -553,7 +555,7 @@ impl Default for Stderr {
 fn parse_cargo_json(
     project: &Project,
     stdout: &[u8],
-    path_map: &Map<CanonicalPath, (&Name, &Test)>,
+    path_map: &Map<PathBuf, (&Name, &Test)>,
 ) -> ParsedOutputs {
     let mut map = Map::new();
     let mut nonmessage_stdout = String::new();
@@ -581,7 +583,8 @@ fn parse_cargo_json(
         if let Ok(de) = serde_json::from_str::<CargoMessage>(message)
             && de.message.level != "failure-note"
         {
-            let src_path = CanonicalPath::new(&de.target.src_path);
+            let src_path = &de.target.src_path;
+            let src_path = src_path.canonicalize().unwrap_or(src_path.clone());
             let Some((name, test)) = path_map.get(&src_path) else {
                 continue;
             };

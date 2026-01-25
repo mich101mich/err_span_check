@@ -18,8 +18,8 @@ pub(crate) struct Context<'a> {
     pub path_dependencies: &'a [PathDependency],
 }
 
-pub(crate) struct ContextProcessed<'a> {
-    inner: Context<'a>,
+pub(crate) struct ContextProcessed {
+    krate: String,
     source_dir_pat: String,
     target_dir_pat: String,
     input_file_pat: String,
@@ -27,8 +27,8 @@ pub(crate) struct ContextProcessed<'a> {
     path_dependencies: Vec<(String, String)>,
 }
 
-impl<'a> ContextProcessed<'a> {
-    pub(crate) fn new(inner: Context<'a>) -> Self {
+impl ContextProcessed {
+    pub(crate) fn new(inner: Context) -> Self {
         fn path_to_pat(path: &Path) -> String {
             path.to_string_lossy()
                 .to_ascii_lowercase()
@@ -57,7 +57,7 @@ impl<'a> ContextProcessed<'a> {
             .collect::<Vec<_>>();
 
         ContextProcessed {
-            inner,
+            krate: inner.krate.to_owned(),
             source_dir_pat,
             target_dir_pat,
             input_file_pat,
@@ -204,7 +204,7 @@ fn apply(original: &str, normalization: Normalization, context: &ContextProcesse
 struct Filter<'a> {
     all_lines: &'a [&'a str],
     normalization: Normalization,
-    context: &'a ContextProcessed<'a>,
+    context: &'a ContextProcessed,
     hide_numbers: usize,
     other_types: Option<usize>,
 }
@@ -480,7 +480,7 @@ impl<'a> Filter<'a> {
             }
         }
 
-        line = line.replace(self.context.inner.krate, "$CRATE");
+        line = line.replace(&self.context.krate, "$CRATE");
         line = replace_case_insensitive(&line, &self.context.source_dir_pat, "$DIR/");
         line = replace_case_insensitive(&line, &self.context.workspace_pat, "$WORKSPACE/");
 

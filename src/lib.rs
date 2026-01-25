@@ -227,7 +227,6 @@ mod inherit;
 mod manifest;
 mod message;
 mod normalize;
-mod path;
 mod run;
 mod rustflags;
 
