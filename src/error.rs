@@ -1,101 +1,51 @@
 use glob::{GlobError, PatternError};
-use std::ffi::OsString;
-use std::fmt::{self, Display};
 use std::io;
 use std::path::PathBuf;
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
+    #[error("failed to execute cargo: {0}")]
     Cargo(io::Error),
+    #[error("cargo reported an error")]
     CargoFail,
+    #[error("failed to read manifest {0}: {1}")]
     GetManifest(PathBuf, Box<Error>),
-    Glob(GlobError),
-    Io(io::Error),
+    #[error(transparent)]
+    Glob(#[from] GlobError),
+    #[error(transparent)]
+    Io(#[from] io::Error),
+    #[error("failed to read cargo metadata: {0}")]
     Metadata(serde_json::Error),
+    #[error("compiler error does not match expected error")]
     Mismatch,
+    #[error("Cargo.toml uses edition.workspace=true, but no edition found in workspace's manifest")]
     NoWorkspaceManifest,
+    #[error("{1}: {0}")]
     Open(PathBuf, io::Error),
-    Pattern(PatternError),
+    #[error(transparent)]
+    Pattern(#[from] PatternError),
+    #[error("failed to determine name of project dir")]
     ProjectDir,
+    #[error("failed to read stderr file: {0}")]
     ReadStderr(io::Error),
+    #[error("expected test case to fail to compile, but it succeeded")]
     ShouldNotHaveCompiled,
-    TomlDe(toml::de::Error),
-    TomlSer(toml::ser::Error),
-    UpdateVar(OsString),
+    #[error(transparent)]
+    TomlDe(#[from] toml::de::Error),
+    #[error(transparent)]
+    TomlSer(#[from] toml::ser::Error),
+    #[error("unrecognized value of ERR_SPAN_CHECK: {0:?}")]
+    UpdateVar(String),
+    #[error("failed to write stderr file: {0}")]
     WriteStderr(io::Error),
 }
 
 pub(crate) type Result<T> = std::result::Result<T, Error>;
-
-impl Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use self::Error::*;
-
-        match self {
-            Cargo(e) => write!(f, "failed to execute cargo: {}", e),
-            CargoFail => write!(f, "cargo reported an error"),
-            GetManifest(path, e) => write!(f, "failed to read manifest {}: {}", path.display(), e),
-            Glob(e) => write!(f, "{}", e),
-            Io(e) => write!(f, "{}", e),
-            Metadata(e) => write!(f, "failed to read cargo metadata: {}", e),
-            Mismatch => write!(f, "compiler error does not match expected error"),
-            NoWorkspaceManifest => write!(
-                f,
-                "Cargo.toml uses edition.workspace=true, but no edition found in workspace's manifest"
-            ),
-            Open(path, e) => write!(f, "{}: {}", path.display(), e),
-            Pattern(e) => write!(f, "{}", e),
-            ProjectDir => write!(f, "failed to determine name of project dir"),
-            ReadStderr(e) => write!(f, "failed to read stderr file: {}", e),
-            ShouldNotHaveCompiled => {
-                write!(f, "expected test case to fail to compile, but it succeeded")
-            }
-            TomlDe(e) => write!(f, "{}", e),
-            TomlSer(e) => write!(f, "{}", e),
-            UpdateVar(var) => write!(
-                f,
-                "unrecognized value of ERR_SPAN_CHECK: {:?}",
-                var.to_string_lossy(),
-            ),
-            WriteStderr(e) => write!(f, "failed to write stderr file: {}", e),
-        }
-    }
-}
 
 impl Error {
     pub fn already_printed(&self) -> bool {
         use self::Error::*;
 
         matches!(self, CargoFail | Mismatch | ShouldNotHaveCompiled)
-    }
-}
-
-impl From<GlobError> for Error {
-    fn from(err: GlobError) -> Self {
-        Error::Glob(err)
-    }
-}
-
-impl From<PatternError> for Error {
-    fn from(err: PatternError) -> Self {
-        Error::Pattern(err)
-    }
-}
-
-impl From<io::Error> for Error {
-    fn from(err: io::Error) -> Self {
-        Error::Io(err)
-    }
-}
-
-impl From<toml::de::Error> for Error {
-    fn from(err: toml::de::Error) -> Self {
-        Error::TomlDe(err)
-    }
-}
-
-impl From<toml::ser::Error> for Error {
-    fn from(err: toml::ser::Error) -> Self {
-        Error::TomlSer(err)
     }
 }

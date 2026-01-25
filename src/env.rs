@@ -1,23 +1,21 @@
 use crate::error::{Error, Result};
 use std::env;
 
-#[derive(PartialEq, Default, Debug)]
+#[derive(PartialEq, Debug)]
 pub(crate) enum Update {
-    #[default]
-    Wip,
+    None,
     Overwrite,
 }
 
 impl Update {
     pub fn env() -> Result<Self> {
         let Some(var) = env::var_os("ERR_SPAN_CHECK") else {
-            return Ok(Update::default());
+            return Ok(Update::None);
         };
 
         match var.as_os_str().to_str() {
-            Some("wip") => Ok(Update::Wip),
             Some("overwrite") => Ok(Update::Overwrite),
-            _ => Err(Error::UpdateVar(var)),
+            _ => Err(Error::UpdateVar(var.to_string_lossy().into_owned())),
         }
     }
 }

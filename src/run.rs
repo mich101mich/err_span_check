@@ -404,7 +404,7 @@ impl Test {
 
         if !stderr_path.exists() {
             let outcome = match project.update {
-                Update::Wip => {
+                Update::None => {
                     let wip_dir = Path::new("wip");
                     fs::create_dir_all(wip_dir)?;
                     let gitignore_path = wip_dir.join(".gitignore");
@@ -437,7 +437,7 @@ impl Test {
         }
 
         match project.update {
-            Update::Wip => {
+            Update::None => {
                 message::mismatch(&expected, preferred);
                 Err(Error::Mismatch)
             }
