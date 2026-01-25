@@ -183,22 +183,5 @@ fn features(project: &Project) -> Vec<String> {
 }
 
 fn target() -> Vec<&'static str> {
-    // When --target flag is passed, cargo does not pass RUSTFLAGS to rustc when
-    // building proc-macro and build script even if the host and target triples
-    // are the same. Therefore, if we always pass --target to cargo, tools such
-    // as coverage that require RUSTFLAGS do not work for tests run by err_span_check.
-    //
-    // To avoid that problem, do not pass --target to cargo if we know that it
-    // has not been passed.
-    //
-    // Currently, cargo does not have a way to tell the build script whether
-    // --target has been passed or not, and there is no heuristic that can
-    // handle this well.
-    //
-    // Therefore, expose a cfg to always treat the target as host.
-    if cfg!(trybuild_no_target) {
-        vec![]
-    } else {
-        vec!["--target", TARGET]
-    }
+    vec!["--target", TARGET]
 }

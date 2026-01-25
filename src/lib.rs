@@ -1,3 +1,23 @@
+#![deny(
+    missing_docs,
+    missing_debug_implementations,
+    trivial_casts,
+    trivial_numeric_casts,
+    unsafe_code,
+    unstable_features,
+    unused_import_braces,
+    unused_qualifications,
+    // rustdoc::missing_doc_code_examples, // can be re-enabled when developing, but not useful as a strict rule
+    rustdoc::broken_intra_doc_links,
+    rustdoc::private_intra_doc_links,
+    rustdoc::missing_crate_level_docs,
+    rustdoc::invalid_codeblock_attributes,
+    rustdoc::invalid_html_tags,
+    rustdoc::bare_urls,
+    rustdoc::redundant_explicit_links,
+    rustdoc::unescaped_backticks
+)]
+
 //! [![github]](https://github.com/dtolnay/err_span_check)&ensp;[![crates-io]](https://crates.io/crates/err_span_check)&ensp;[![docs-rs]](https://docs.rs/err_span_check)
 //!
 //! [github]: https://img.shields.io/badge/github-8da0cb?style=for-the-badge&labelColor=555555&logo=github
@@ -31,6 +51,7 @@
 //! A minimal err_span_check setup looks like this:
 //!
 //! ```
+//! # #[allow(clippy::test_attr_in_doctest)]
 //! #[test]
 //! fn ui() {
 //!     let t = err_span_check::TestCases::new();
@@ -192,40 +213,6 @@
 //! components = ["rust-src"]
 //! ```
 
-#![doc(html_root_url = "https://docs.rs/err_span_check/1.0.114")]
-#![cfg_attr(not(check_cfg), allow(unexpected_cfgs))]
-#![allow(
-    clippy::collapsible_if,
-    clippy::comparison_chain,
-    clippy::default_trait_access,
-    clippy::derive_partial_eq_without_eq,
-    clippy::doc_markdown,
-    clippy::elidable_lifetime_names,
-    clippy::enum_glob_use,
-    clippy::iter_not_returning_iterator, // https://github.com/rust-lang/rust-clippy/issues/8285
-    clippy::let_underscore_untyped, // https://github.com/rust-lang/rust-clippy/issues/10410
-    clippy::manual_assert,
-    clippy::manual_range_contains,
-    clippy::module_inception,
-    clippy::module_name_repetitions,
-    clippy::must_use_candidate,
-    clippy::needless_lifetimes,
-    clippy::needless_pass_by_value,
-    clippy::non_ascii_literal,
-    clippy::range_plus_one,
-    clippy::similar_names,
-    clippy::single_match_else,
-    clippy::test_attr_in_doctest,
-    clippy::too_many_lines,
-    clippy::trivially_copy_pass_by_ref,
-    clippy::uninhabited_references,
-    clippy::uninlined_format_args,
-    clippy::unused_self,
-    clippy::while_let_on_iterator,
-)]
-#![deny(clippy::clone_on_ref_ptr)]
-#![allow(unknown_lints, mismatched_lifetime_syntaxes)]
-
 #[macro_use]
 mod term;
 
@@ -249,6 +236,7 @@ use std::panic::RefUnwindSafe;
 use std::path::{Path, PathBuf};
 use std::thread;
 
+/// TODO: document
 #[derive(Debug)]
 pub struct TestCases {
     runner: RefCell<Runner>,
@@ -265,6 +253,7 @@ struct Test {
 }
 
 impl TestCases {
+    /// TODO: document
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         TestCases {
@@ -272,6 +261,7 @@ impl TestCases {
         }
     }
 
+    /// TODO: document
     pub fn test<P: AsRef<Path>>(&self, path: P) {
         self.runner.borrow_mut().tests.push(Test {
             path: path.as_ref().to_owned(),

@@ -578,29 +578,29 @@ fn parse_cargo_json(
             // a short-lived bug.
             continue;
         }
-        if let Ok(de) = serde_json::from_str::<CargoMessage>(message) {
-            if de.message.level != "failure-note" {
-                let src_path = CanonicalPath::new(&de.target.src_path);
-                let Some((name, test)) = path_map.get(&src_path) else {
-                    continue;
-                };
-                let entry = map.entry(src_path).or_insert_with(Stderr::default);
-                if de.message.level == "error" {
-                    entry.success = false;
-                }
-                let normalized = normalize::diagnostics(
-                    &de.message.rendered,
-                    Context {
-                        krate: &name.0,
-                        source_dir: &project.source_dir,
-                        workspace: &project.workspace,
-                        input_file: &test.path,
-                        target_dir: &project.target_dir,
-                        path_dependencies: &project.path_dependencies,
-                    },
-                );
-                entry.stderr.concat(&normalized);
+        if let Ok(de) = serde_json::from_str::<CargoMessage>(message)
+            && de.message.level != "failure-note"
+        {
+            let src_path = CanonicalPath::new(&de.target.src_path);
+            let Some((name, test)) = path_map.get(&src_path) else {
+                continue;
+            };
+            let entry = map.entry(src_path).or_insert_with(Stderr::default);
+            if de.message.level == "error" {
+                entry.success = false;
             }
+            let normalized = normalize::diagnostics(
+                &de.message.rendered,
+                Context {
+                    krate: &name.0,
+                    source_dir: &project.source_dir,
+                    workspace: &project.workspace,
+                    input_file: &test.path,
+                    target_dir: &project.target_dir,
+                    path_dependencies: &project.path_dependencies,
+                },
+            );
+            entry.stderr.concat(&normalized);
         }
     }
     nonmessage_stdout.push_str(remaining);

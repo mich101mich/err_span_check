@@ -178,12 +178,13 @@ impl<'a> Filter<'a> {
             None
         };
 
-        if prefix == Some("--> ") && self.normalization < ArrowOtherCrate {
-            if let Some(cut_end) = line.rfind(&['/', '\\'][..]) {
-                let cut_start = indent + 4;
-                line.replace_range(cut_start..cut_end + 1, "$DIR/");
-                return Some(line);
-            }
+        if prefix == Some("--> ")
+            && self.normalization < ArrowOtherCrate
+            && let Some(cut_end) = line.rfind(&['/', '\\'][..])
+        {
+            let cut_start = indent + 4;
+            line.replace_range(cut_start..cut_end + 1, "$DIR/");
+            return Some(line);
         }
 
         if prefix.is_some() {
@@ -299,35 +300,35 @@ impl<'a> Filter<'a> {
                     other_crate = true;
                 }
             }
-            if self.normalization >= CargoRegistry && !other_crate {
-                if let Some(pos) = line
+            if self.normalization >= CargoRegistry
+                && !other_crate
+                && let Some(pos) = line
                     .find("/registry/src/github.com-")
                     .or_else(|| line.find("/registry/src/index.crates.io-"))
+            {
+                let hash_start = pos + line[pos..].find('-').unwrap() + 1;
+                let hash_end = hash_start + 16;
+                if line
+                    .get(hash_start..hash_end)
+                    .is_some_and(is_ascii_lowercase_hex)
+                    && line[hash_end..].starts_with('/')
                 {
-                    let hash_start = pos + line[pos..].find('-').unwrap() + 1;
-                    let hash_end = hash_start + 16;
-                    if line
-                        .get(hash_start..hash_end)
-                        .is_some_and(is_ascii_lowercase_hex)
-                        && line[hash_end..].starts_with('/')
-                    {
-                        // --> /home/.cargo/registry/src/github.com-1ecc6299db9ec823/serde_json-1.0.64/src/de.rs:2584:8
-                        // --> $CARGO/serde_json-1.0.64/src/de.rs:2584:8
-                        line.replace_range(indent + 4..hash_end, "$CARGO");
-                        other_crate = true;
-                        if self.normalization >= DependencyVersion {
-                            let rest = &line[indent + 11..];
-                            let end_of_version = rest.find('/');
-                            if let Some(end_of_crate_name) = end_of_version
-                                .and_then(|end| rest[..end].find('.'))
-                                .and_then(|end| rest[..end].rfind('-'))
-                            {
-                                line.replace_range(
-                                    indent + end_of_crate_name + 12
-                                        ..indent + end_of_version.unwrap() + 11,
-                                    "$VERSION",
-                                );
-                            }
+                    // --> /home/.cargo/registry/src/github.com-1ecc6299db9ec823/serde_json-1.0.64/src/de.rs:2584:8
+                    // --> $CARGO/serde_json-1.0.64/src/de.rs:2584:8
+                    line.replace_range(indent + 4..hash_end, "$CARGO");
+                    other_crate = true;
+                    if self.normalization >= DependencyVersion {
+                        let rest = &line[indent + 11..];
+                        let end_of_version = rest.find('/');
+                        if let Some(end_of_crate_name) = end_of_version
+                            .and_then(|end| rest[..end].find('.'))
+                            .and_then(|end| rest[..end].rfind('-'))
+                        {
+                            line.replace_range(
+                                indent + end_of_crate_name + 12
+                                    ..indent + end_of_version.unwrap() + 11,
+                                "$VERSION",
+                            );
                         }
                     }
                 }
@@ -363,22 +364,22 @@ impl<'a> Filter<'a> {
             return None;
         }
 
-        if self.normalization >= StripCouldNotCompile {
-            if line.starts_with("error: Could not compile `") {
-                return None;
-            }
+        if self.normalization >= StripCouldNotCompile
+            && line.starts_with("error: Could not compile `")
+        {
+            return None;
         }
 
-        if self.normalization >= StripCouldNotCompile2 {
-            if line.starts_with("error: could not compile `") {
-                return None;
-            }
+        if self.normalization >= StripCouldNotCompile2
+            && line.starts_with("error: could not compile `")
+        {
+            return None;
         }
 
-        if self.normalization >= StripForMoreInformation {
-            if line.starts_with("For more information about this error, try `rustc --explain") {
-                return None;
-            }
+        if self.normalization >= StripForMoreInformation
+            && line.starts_with("For more information about this error, try `rustc --explain")
+        {
+            return None;
         }
 
         if self.normalization >= StripForMoreInformation2 {
@@ -394,13 +395,12 @@ impl<'a> Filter<'a> {
             line.truncate(line.trim_end().len());
         }
 
-        if self.normalization >= TypeDirBackslash {
-            if line
+        if self.normalization >= TypeDirBackslash
+            && line
                 .trim_start()
                 .starts_with("= note: required because it appears within the type")
-            {
-                line = line.replace('\\', "/");
-            }
+        {
+            line = line.replace('\\', "/");
         }
 
         if self.normalization >= AndOthers {
@@ -517,13 +517,13 @@ fn replace_case_insensitive(line: &str, pattern: &str, replacement: &str) -> Str
         replaced.push_str(keep);
         pos += keep.len();
         insert_replacement = true;
-        if replaced.ends_with(|ch: char| ch.is_ascii_alphanumeric()) {
-            if let Some(ch) = line[pos..].chars().next() {
-                replaced.push(ch);
-                pos += ch.len_utf8();
-                split = line_lower[pos..].split(&pattern_lower);
-                insert_replacement = false;
-            }
+        if replaced.ends_with(|ch: char| ch.is_ascii_alphanumeric())
+            && let Some(ch) = line[pos..].chars().next()
+        {
+            replaced.push(ch);
+            pos += ch.len_utf8();
+            split = line_lower[pos..].split(&pattern_lower);
+            insert_replacement = false;
         }
     }
 
@@ -574,43 +574,41 @@ fn unindent(diag: String, normalization: Normalization) -> String {
 
         if let IndentedLineKind::Code(indent) =
             indented_line_kind(next_line, false, &mut false, normalization)
+            && next_line[indent + 1..].starts_with("--> ")
         {
-            if next_line[indent + 1..].starts_with("--> ") {
-                let mut lines_in_block = 1;
-                let mut least_indent = indent;
-                let mut previous_line_is_note = false;
-                while let Some(line) = ahead.next() {
-                    match indented_line_kind(line, false, &mut previous_line_is_note, normalization)
-                    {
-                        IndentedLineKind::Heading => break,
-                        IndentedLineKind::Code(indent) => {
+            let mut lines_in_block = 1;
+            let mut least_indent = indent;
+            let mut previous_line_is_note = false;
+            for line in ahead {
+                match indented_line_kind(line, false, &mut previous_line_is_note, normalization) {
+                    IndentedLineKind::Heading => break,
+                    IndentedLineKind::Code(indent) => {
+                        lines_in_block += 1;
+                        least_indent = cmp::min(least_indent, indent);
+                    }
+                    IndentedLineKind::Note => lines_in_block += 1,
+                    IndentedLineKind::Other(spaces) => {
+                        if spaces > 10 {
                             lines_in_block += 1;
-                            least_indent = cmp::min(least_indent, indent);
-                        }
-                        IndentedLineKind::Note => lines_in_block += 1,
-                        IndentedLineKind::Other(spaces) => {
-                            if spaces > 10 {
-                                lines_in_block += 1;
-                            } else {
-                                break;
-                            }
+                        } else {
+                            break;
                         }
                     }
                 }
-                previous_line_is_note = false;
-                for _ in 0..lines_in_block {
-                    let line = lines.next().unwrap();
-                    if let IndentedLineKind::Code(_) | IndentedLineKind::Other(_) =
-                        indented_line_kind(line, false, &mut previous_line_is_note, normalization)
-                    {
-                        let space = line.find(' ').unwrap();
-                        normalized.push_str(&line[..space]);
-                        normalized.push_str(&line[space + least_indent..]);
-                    } else {
-                        normalized.push_str(line);
-                    }
-                    normalized.push('\n');
+            }
+            previous_line_is_note = false;
+            for _ in 0..lines_in_block {
+                let line = lines.next().unwrap();
+                if let IndentedLineKind::Code(_) | IndentedLineKind::Other(_) =
+                    indented_line_kind(line, false, &mut previous_line_is_note, normalization)
+                {
+                    let space = line.find(' ').unwrap();
+                    normalized.push_str(&line[..space]);
+                    normalized.push_str(&line[space + least_indent..]);
+                } else {
+                    normalized.push_str(line);
                 }
+                normalized.push('\n');
             }
         }
     }
@@ -632,10 +630,9 @@ fn indented_line_kind(
         Some("warning".len())
     } else {
         None
-    } {
-        if line[heading_len..].starts_with(&[':', '['][..]) {
-            return IndentedLineKind::Heading;
-        }
+    } && line[heading_len..].starts_with(&[':', '['][..])
+    {
+        return IndentedLineKind::Heading;
     }
 
     if first_line_in_block && normalization >= HeadingNote && line.starts_with("note: ") {
