@@ -1,5 +1,7 @@
-use std::io::{Result, Write};
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::{
+    io::{Result, Write},
+    sync::{Mutex, MutexGuard},
+};
 use termcolor::{ColorChoice, ColorSpec, StandardStream as Stream, WriteColor};
 
 static TERM: Mutex<Term> = Mutex::new(Term::new());
@@ -37,7 +39,7 @@ impl Colors {
 }
 
 pub(crate) fn lock() -> MutexGuard<'static, Term> {
-    TERM.lock().unwrap_or_else(PoisonError::into_inner)
+    TERM.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 #[deny(unused_macros)]

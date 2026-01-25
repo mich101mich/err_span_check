@@ -1,5 +1,4 @@
-use serde::de::{self, Deserialize, Deserializer, Visitor};
-use serde_derive::Deserialize;
+use serde::{Deserialize, de};
 use std::fmt;
 
 #[derive(Deserialize)]
@@ -14,13 +13,13 @@ pub(crate) struct True;
 impl<'de> Deserialize<'de> for True {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: Deserializer<'de>,
+        D: de::Deserializer<'de>,
     {
         deserializer.deserialize_bool(True)
     }
 }
 
-impl<'de> Visitor<'de> for True {
+impl<'de> de::Visitor<'de> for True {
     type Value = True;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {

@@ -1,6 +1,6 @@
 use glob::{GlobError, PatternError};
-use std::io;
-use std::path::PathBuf;
+
+use std::{io, path::PathBuf};
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {

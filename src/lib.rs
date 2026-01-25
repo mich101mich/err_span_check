@@ -230,10 +230,15 @@ mod normalize;
 mod run;
 mod rustflags;
 
-use std::cell::RefCell;
-use std::panic::RefUnwindSafe;
-use std::path::{Path, PathBuf};
-use std::thread;
+pub(crate) use error::{Error, Result};
+
+pub(crate) use serde::{Deserialize, Serialize, de::Deserializer, ser::Serializer};
+
+pub(crate) use std::{
+    cell::RefCell,
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 
 /// TODO: document
 #[derive(Debug)]
@@ -268,12 +273,12 @@ impl TestCases {
     }
 }
 
-impl RefUnwindSafe for TestCases {}
+impl std::panic::RefUnwindSafe for TestCases {}
 
 #[doc(hidden)]
 impl Drop for TestCases {
     fn drop(&mut self) {
-        if !thread::panicking() {
+        if !std::thread::panicking() {
             self.runner.borrow_mut().run();
         }
     }

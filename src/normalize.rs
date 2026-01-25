@@ -3,10 +3,7 @@
 mod tests;
 
 use self::Normalization::*;
-use crate::run::PathDependency;
-use std::cmp;
-use std::mem;
-use std::path::Path;
+use super::*;
 
 #[derive(Copy, Clone)]
 pub(crate) struct Context<'a> {
@@ -15,7 +12,7 @@ pub(crate) struct Context<'a> {
     pub workspace: &'a Path,
     pub input_file: &'a Path,
     pub target_dir: &'a Path,
-    pub path_dependencies: &'a [PathDependency],
+    pub path_dependencies: &'a [run::PathDependency],
 }
 
 pub(crate) struct ContextProcessed {
@@ -605,7 +602,7 @@ fn unindent(diag: String, normalization: Normalization) -> String {
                     IndentedLineKind::Heading => break,
                     IndentedLineKind::Code(indent) => {
                         lines_in_block += 1;
-                        least_indent = cmp::min(least_indent, indent);
+                        least_indent = least_indent.min(indent);
                     }
                     IndentedLineKind::Note => lines_in_block += 1,
                     IndentedLineKind::Other(spaces) => {
@@ -643,7 +640,7 @@ fn indented_line_kind(
     previous_line_is_note: &mut bool,
     normalization: Normalization,
 ) -> IndentedLineKind {
-    let previous_line_was_note = mem::replace(previous_line_is_note, false);
+    let previous_line_was_note = std::mem::replace(previous_line_is_note, false);
 
     if let Some(heading_len) = if line.starts_with("error") {
         Some("error".len())

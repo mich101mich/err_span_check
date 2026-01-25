@@ -1,12 +1,8 @@
-use crate::Test;
-use crate::error::{Error, Result};
-use crate::manifest::Name;
-use std::collections::BTreeMap as Map;
-use std::path::PathBuf;
+use super::*;
 
 #[derive(Debug)]
 pub(crate) struct ExpandedTest {
-    pub name: Name,
+    pub name: String,
     pub test: Test,
     pub error: Option<Error>,
     is_from_glob: bool,
@@ -34,14 +30,14 @@ pub(crate) fn expand_globs(tests: &[Test]) -> Vec<ExpandedTest> {
 
 struct ExpandedTestSet {
     vec: Vec<ExpandedTest>,
-    path_to_index: Map<PathBuf, usize>,
+    path_to_index: BTreeMap<PathBuf, usize>,
 }
 
 impl ExpandedTestSet {
     fn new() -> Self {
         ExpandedTestSet {
             vec: Vec::new(),
-            path_to_index: Map::new(),
+            path_to_index: BTreeMap::new(),
         }
     }
 
@@ -54,7 +50,7 @@ impl ExpandedTestSet {
         }
 
         let index = self.vec.len();
-        let name = Name(format!("err_span_check{:03}", index));
+        let name = format!("err_span_check{:03}", index);
         self.path_to_index.insert(test.path.clone(), index);
         self.vec.push(ExpandedTest {
             name,

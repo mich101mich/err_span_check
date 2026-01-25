@@ -1,21 +1,14 @@
-use crate::error::Error;
-use crate::inherit::InheritEdition;
-use crate::manifest::Edition;
-use serde::de::value::MapAccessDeserializer;
-use serde::de::value::StrDeserializer;
-use serde::de::{self, Deserialize, Deserializer, Visitor};
-use serde::ser::{Serialize, Serializer};
-use serde_derive::{Deserialize, Serialize};
-use serde_json::Value;
-use std::collections::BTreeMap as Map;
-use std::fmt;
-use std::fs;
-use std::path::PathBuf;
+use super::{inherit::InheritEdition, manifest::Edition, *};
 
-pub(crate) fn get_manifest(manifest_dir: &std::path::Path) -> Result<Manifest, Error> {
+use serde::de::{
+    self,
+    value::{MapAccessDeserializer, StrDeserializer},
+};
+
+pub(crate) fn get_manifest(manifest_dir: &Path) -> Result<Manifest> {
     let cargo_toml_path = manifest_dir.join("Cargo.toml");
     let mut manifest = (|| {
-        let manifest_str = fs::read_to_string(&cargo_toml_path)?;
+        let manifest_str = std::fs::read_to_string(&cargo_toml_path)?;
         let manifest: Manifest = toml::from_str(&manifest_str)?;
         Ok(manifest)
     })()
@@ -31,15 +24,13 @@ pub(crate) fn get_manifest(manifest_dir: &std::path::Path) -> Result<Manifest, E
     Ok(manifest)
 }
 
-pub(crate) fn get_workspace_manifest(manifest_dir: &std::path::Path) -> WorkspaceManifest {
+pub(crate) fn get_workspace_manifest(manifest_dir: &Path) -> WorkspaceManifest {
     try_get_workspace_manifest(manifest_dir).unwrap_or_default()
 }
 
-pub(crate) fn try_get_workspace_manifest(
-    manifest_dir: &std::path::Path,
-) -> Result<WorkspaceManifest, Error> {
+pub(crate) fn try_get_workspace_manifest(manifest_dir: &Path) -> Result<WorkspaceManifest> {
     let cargo_toml_path = manifest_dir.join("Cargo.toml");
-    let manifest_str = fs::read_to_string(cargo_toml_path)?;
+    let manifest_str = std::fs::read_to_string(cargo_toml_path)?;
     let mut manifest: WorkspaceManifest = toml::from_str(&manifest_str)?;
 
     fix_dependencies(&mut manifest.workspace.dependencies, manifest_dir);
@@ -49,14 +40,14 @@ pub(crate) fn try_get_workspace_manifest(
     Ok(manifest)
 }
 
-fn fix_dependencies(dependencies: &mut Map<String, Dependency>, dir: &std::path::Path) {
+fn fix_dependencies(dependencies: &mut BTreeMap<String, Dependency>, dir: &Path) {
     dependencies.remove("err_span_check");
     for dep in dependencies.values_mut() {
         dep.path = dep.path.as_ref().map(|path| dir.join(path));
     }
 }
 
-fn fix_patches(patches: &mut Map<String, RegistryPatch>, dir: &std::path::Path) {
+fn fix_patches(patches: &mut BTreeMap<String, RegistryPatch>, dir: &Path) {
     for registry in patches.values_mut() {
         registry.crates.remove("err_span_check");
         for patch in registry.crates.values_mut() {
@@ -65,7 +56,7 @@ fn fix_patches(patches: &mut Map<String, RegistryPatch>, dir: &std::path::Path) 
     }
 }
 
-fn fix_replacements(replacements: &mut Map<String, Patch>, dir: &std::path::Path) {
+fn fix_replacements(replacements: &mut BTreeMap<String, Patch>, dir: &Path) {
     replacements.remove("err_span_check");
     for replacement in replacements.values_mut() {
         replacement.path = replacement.path.as_ref().map(|path| dir.join(path));
@@ -77,9 +68,9 @@ pub(crate) struct WorkspaceManifest {
     #[serde(default)]
     pub workspace: WorkspaceWorkspace,
     #[serde(default)]
-    pub patch: Map<String, RegistryPatch>,
+    pub patch: BTreeMap<String, RegistryPatch>,
     #[serde(default)]
-    pub replace: Map<String, Patch>,
+    pub replace: BTreeMap<String, Patch>,
 }
 
 #[derive(Deserialize, Default, Debug)]
@@ -87,7 +78,7 @@ pub(crate) struct WorkspaceWorkspace {
     #[serde(default)]
     pub package: WorkspacePackage,
     #[serde(default)]
-    pub dependencies: Map<String, Dependency>,
+    pub dependencies: BTreeMap<String, Dependency>,
 }
 
 #[derive(Deserialize, Default, Debug)]
@@ -102,13 +93,13 @@ pub(crate) struct Manifest {
     #[serde(default)]
     pub package: Package,
     #[serde(default)]
-    pub features: Map<String, Vec<String>>,
+    pub features: BTreeMap<String, Vec<String>>,
     #[serde(default)]
-    pub dependencies: Map<String, Dependency>,
+    pub dependencies: BTreeMap<String, Dependency>,
     #[serde(default, alias = "dev-dependencies")]
-    pub dev_dependencies: Map<String, Dependency>,
+    pub dev_dependencies: BTreeMap<String, Dependency>,
     #[serde(default)]
-    pub target: Map<String, TargetDependencies>,
+    pub target: BTreeMap<String, TargetDependencies>,
 }
 
 #[derive(Deserialize, Default, Debug)]
@@ -149,25 +140,25 @@ pub(crate) struct Dependency {
     #[serde(default, skip_serializing_if = "is_false")]
     pub workspace: bool,
     #[serde(flatten)]
-    pub rest: Map<String, Value>,
+    pub rest: BTreeMap<String, serde_json::Value>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub(crate) struct TargetDependencies {
-    #[serde(default, skip_serializing_if = "Map::is_empty")]
-    pub dependencies: Map<String, Dependency>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub dependencies: BTreeMap<String, Dependency>,
     #[serde(
         default,
         alias = "dev-dependencies",
-        skip_serializing_if = "Map::is_empty"
+        skip_serializing_if = "BTreeMap::is_empty"
     )]
-    pub dev_dependencies: Map<String, Dependency>,
+    pub dev_dependencies: BTreeMap<String, Dependency>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(transparent)]
 pub(crate) struct RegistryPatch {
-    pub crates: Map<String, Patch>,
+    pub crates: BTreeMap<String, Patch>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -183,7 +174,7 @@ pub(crate) struct Patch {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rev: Option<String>,
     #[serde(flatten)]
-    pub rest: Map<String, Value>,
+    pub rest: BTreeMap<String, serde_json::Value>,
 }
 
 fn is_false(boolean: &bool) -> bool {
@@ -197,27 +188,27 @@ impl Default for EditionOrInherit {
 }
 
 impl<'de> Deserialize<'de> for EditionOrInherit {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
         struct EditionOrInheritVisitor;
 
-        impl<'de> Visitor<'de> for EditionOrInheritVisitor {
+        impl<'de> de::Visitor<'de> for EditionOrInheritVisitor {
             type Value = EditionOrInherit;
 
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
                 formatter.write_str("edition")
             }
 
-            fn visit_str<E>(self, s: &str) -> Result<Self::Value, E>
+            fn visit_str<E>(self, s: &str) -> std::result::Result<Self::Value, E>
             where
                 E: de::Error,
             {
                 Edition::deserialize(StrDeserializer::new(s)).map(EditionOrInherit::Edition)
             }
 
-            fn visit_map<M>(self, map: M) -> Result<Self::Value, M::Error>
+            fn visit_map<M>(self, map: M) -> std::result::Result<Self::Value, M::Error>
             where
                 M: de::MapAccess<'de>,
             {
@@ -231,7 +222,7 @@ impl<'de> Deserialize<'de> for EditionOrInherit {
 }
 
 impl Serialize for Dependency {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
@@ -240,23 +231,23 @@ impl Serialize for Dependency {
 }
 
 impl<'de> Deserialize<'de> for Dependency {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
         struct DependencyVisitor;
 
-        impl<'de> Visitor<'de> for DependencyVisitor {
+        impl<'de> de::Visitor<'de> for DependencyVisitor {
             type Value = Dependency;
 
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
                 formatter.write_str(
                     "a version string like \"0.9.8\" or a \
                      dependency like { version = \"0.9.8\" }",
                 )
             }
 
-            fn visit_str<E>(self, s: &str) -> Result<Self::Value, E>
+            fn visit_str<E>(self, s: &str) -> std::result::Result<Self::Value, E>
             where
                 E: de::Error,
             {
@@ -271,11 +262,11 @@ impl<'de> Deserialize<'de> for Dependency {
                     tag: None,
                     rev: None,
                     workspace: false,
-                    rest: Map::new(),
+                    rest: BTreeMap::new(),
                 })
             }
 
-            fn visit_map<M>(self, map: M) -> Result<Self::Value, M::Error>
+            fn visit_map<M>(self, map: M) -> std::result::Result<Self::Value, M::Error>
             where
                 M: de::MapAccess<'de>,
             {

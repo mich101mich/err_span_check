@@ -1,11 +1,13 @@
-use crate::error::Result;
-use std::fs::{self, File, OpenOptions};
-use std::io;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::thread;
-use std::time::{Duration, SystemTime};
+use super::*;
+
+use std::{
+    fs::File,
+    sync::{
+        Arc, Mutex, MutexGuard,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, SystemTime},
+};
 
 static LOCK: Mutex<()> = Mutex::new(());
 
@@ -42,7 +44,7 @@ impl Lock {
 
 impl Guard {
     fn acquire() -> Self {
-        Guard::Locked(LOCK.lock().unwrap_or_else(PoisonError::into_inner))
+        Guard::Locked(LOCK.lock().unwrap_or_else(|e| e.into_inner()))
     }
 }
 
@@ -53,7 +55,7 @@ impl FileLock {
             return Ok(FileLock::NotLocked);
         };
         let done = Arc::new(AtomicBool::new(false));
-        let thread = thread::Builder::new().name("err_span_check-flock".to_owned());
+        let thread = std::thread::Builder::new().name("err_span_check-flock".to_owned());
         thread.spawn({
             let done = Arc::clone(&done);
             move || poll(lockfile, done)
@@ -80,7 +82,7 @@ impl Drop for FileLock {
             FileLock::NotLocked => {}
             FileLock::Locked { path, done } => {
                 done.store(true, Ordering::Release);
-                let _ = fs::remove_file(path);
+                let _ = std::fs::remove_file(path);
             }
         }
     }
@@ -88,23 +90,27 @@ impl Drop for FileLock {
 
 fn create(path: &Path) -> Option<File> {
     loop {
-        match OpenOptions::new().write(true).create_new(true).open(path) {
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)
+        {
             // Acquired lock by creating lockfile.
             Ok(lockfile) => return Some(lockfile),
             Err(io_error) => match io_error.kind() {
                 // Lock is already held by another test.
-                io::ErrorKind::AlreadyExists => {}
+                std::io::ErrorKind::AlreadyExists => {}
                 // File based locking isn't going to work for some reason.
                 _ => return None,
             },
         }
 
         // Check whether it's okay to bust the lock.
-        let metadata = match fs::metadata(path) {
+        let metadata = match std::fs::metadata(path) {
             Ok(metadata) => metadata,
             Err(io_error) => match io_error.kind() {
                 // Other holder of the lock finished. Retry.
-                io::ErrorKind::NotFound => continue,
+                std::io::ErrorKind::NotFound => continue,
                 _ => return None,
             },
         };
@@ -121,14 +127,14 @@ fn create(path: &Path) -> Option<File> {
         }
 
         // Try again shortly.
-        thread::sleep(Duration::from_millis(500));
+        std::thread::sleep(Duration::from_millis(500));
     }
 }
 
 // Bump mtime periodically while test directory is in use.
 fn poll(lockfile: File, done: Arc<AtomicBool>) {
     loop {
-        thread::sleep(Duration::from_millis(500));
+        std::thread::sleep(Duration::from_millis(500));
         if done.load(Ordering::Acquire) || lockfile.set_len(0).is_err() {
             return;
         }

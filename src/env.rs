@@ -1,5 +1,4 @@
-use crate::error::{Error, Result};
-use std::env;
+use super::*;
 
 #[derive(PartialEq, Debug)]
 pub(crate) enum Update {
@@ -9,7 +8,7 @@ pub(crate) enum Update {
 
 impl Update {
     pub fn env() -> Result<Self> {
-        let Some(var) = env::var_os("ERR_SPAN_CHECK") else {
+        let Some(var) = std::env::var_os("ERR_SPAN_CHECK") else {
             return Ok(Update::None);
         };
 

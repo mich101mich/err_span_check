@@ -1,21 +1,15 @@
-use crate::cargo::{self, Metadata, PackageMetadata};
-use crate::dependencies::{self, Dependency, EditionOrInherit};
-use crate::env::Update;
-use crate::error::{Error, Result};
-use crate::expand::{ExpandedTest, expand_globs};
-use crate::flock::Lock;
-use crate::manifest::{Bin, Manifest, Name, Package, Workspace};
-use crate::message::{self, Fail, Warn};
-use crate::normalize::{self, Context, Variations};
-use crate::{Runner, Test, features};
-use serde_derive::Deserialize;
-use std::collections::{BTreeMap as Map, BTreeSet as Set};
-use std::env;
-use std::ffi::{OsStr, OsString};
-use std::fs::{self, File};
-use std::mem;
-use std::path::{Path, PathBuf};
-use std::str;
+use super::{
+    Runner, Test,
+    cargo::{Metadata, PackageMetadata},
+    dependencies::{Dependency, EditionOrInherit},
+    env::Update,
+    expand::ExpandedTest,
+    features,
+    flock::Lock,
+    manifest::{Bin, Manifest, Package, Workspace},
+    normalize::{Context, Variations},
+    *,
+};
 
 #[derive(Debug)]
 pub(crate) struct Project {
@@ -44,7 +38,7 @@ struct Report {
 
 impl Runner {
     pub(crate) fn run(&mut self) {
-        let mut tests = expand_globs(&self.tests);
+        let mut tests = expand::expand_globs(&self.tests);
         filter(&mut tests);
 
         let (project, _lock) = (|| {
@@ -139,7 +133,7 @@ impl Runner {
             .join("tests")
             .join("err_span_check")
             .join(crate_name);
-        fs::create_dir_all(&project_dir)?;
+        std::fs::create_dir_all(&project_dir)?;
 
         let project_name = format!("{}-tests", crate_name);
         let manifest = self.make_manifest(
@@ -171,13 +165,13 @@ impl Runner {
 
     fn write(&self, project: &mut Project) -> Result<()> {
         let manifest_toml = toml::to_string(&project.manifest)?;
-        fs::write(project.dir.join("Cargo.toml"), manifest_toml)?;
+        std::fs::write(project.dir.join("Cargo.toml"), manifest_toml)?;
 
         let main_rs = b"\
             #![allow(unused_crate_dependencies, missing_docs)]\n\
             fn main() {}\n\
         ";
-        fs::write(project.dir.join("main.rs"), &main_rs[..])?;
+        std::fs::write(project.dir.join("main.rs"), &main_rs[..])?;
 
         cargo::build_dependencies(project)?;
 
@@ -205,7 +199,7 @@ impl Runner {
                 .ok_or(Error::NoWorkspaceManifest)?,
         };
 
-        let mut dependencies = Map::new();
+        let mut dependencies = BTreeMap::new();
         dependencies.extend(source_manifest.dependencies);
         dependencies.extend(source_manifest.dev_dependencies);
 
@@ -233,14 +227,14 @@ impl Runner {
                     tag: None,
                     rev: None,
                     workspace: false,
-                    rest: Map::new(),
+                    rest: BTreeMap::new(),
                 },
             );
         }
 
         let mut targets = source_manifest.target;
         for target in targets.values_mut() {
-            let dev_dependencies = mem::take(&mut target.dev_dependencies);
+            let dev_dependencies = std::mem::take(&mut target.dev_dependencies);
             target.dependencies.extend(dev_dependencies);
         }
 
@@ -290,7 +284,7 @@ impl Runner {
         };
 
         manifest.bins.push(Bin {
-            name: Name(project_name.to_owned()),
+            name: project_name.to_owned(),
             path: Path::new("main.rs").to_owned(),
         });
 
@@ -312,11 +306,11 @@ impl Runner {
             created_wip: 0,
         };
 
-        let mut path_map = Map::new();
+        let mut path_map = BTreeMap::new();
         for t in &tests {
             let src_path = project.source_dir.join(&t.test.path);
             let src_path = src_path.canonicalize().unwrap_or(src_path);
-            path_map.insert(src_path, (&t.name, &t.test));
+            path_map.insert(src_path, (t.name.as_str(), &t.test));
         }
 
         let output = cargo::build_all_tests(project)?;
@@ -363,11 +357,11 @@ enum Outcome {
 }
 
 impl Test {
-    fn run(&self, project: &Project, name: &Name) -> Result<Outcome> {
+    fn run(&self, project: &Project, name: &str) -> Result<Outcome> {
         message::begin_test(self);
         check_exists(&self.path)?;
 
-        let mut path_map = Map::new();
+        let mut path_map = BTreeMap::new();
         let src_path = project.source_dir.join(&self.path);
         let src_path = src_path.canonicalize().unwrap_or(src_path);
         path_map.insert(src_path.clone(), (name, self));
@@ -388,7 +382,7 @@ impl Test {
     fn check_compile_fail(
         &self,
         project: &Project,
-        _name: &Name,
+        _name: &str,
         success: bool,
         build_stdout: &str,
         variations: &Variations,
@@ -397,7 +391,7 @@ impl Test {
 
         if success {
             message::should_not_have_compiled();
-            message::fail_output(Fail, build_stdout);
+            message::fail_output(message::Fail, build_stdout);
             message::warnings(preferred);
             return Err(Error::ShouldNotHaveCompiled);
         }
@@ -408,28 +402,28 @@ impl Test {
             let outcome = match project.update {
                 Update::None => {
                     let wip_dir = Path::new("wip");
-                    fs::create_dir_all(wip_dir)?;
+                    std::fs::create_dir_all(wip_dir)?;
                     let gitignore_path = wip_dir.join(".gitignore");
-                    fs::write(gitignore_path, "*\n")?;
+                    std::fs::write(gitignore_path, "*\n")?;
                     let stderr_name = stderr_path
                         .file_name()
-                        .unwrap_or_else(|| OsStr::new("test.stderr"));
+                        .unwrap_or_else(|| std::ffi::OsStr::new("test.stderr"));
                     let wip_path = wip_dir.join(stderr_name);
                     message::write_stderr_wip(&wip_path, &stderr_path, preferred);
-                    fs::write(wip_path, preferred).map_err(Error::WriteStderr)?;
+                    std::fs::write(wip_path, preferred).map_err(Error::WriteStderr)?;
                     Outcome::CreatedWip
                 }
                 Update::Overwrite => {
                     message::overwrite_stderr(&stderr_path, preferred);
-                    fs::write(stderr_path, preferred).map_err(Error::WriteStderr)?;
+                    std::fs::write(stderr_path, preferred).map_err(Error::WriteStderr)?;
                     Outcome::Passed
                 }
             };
-            message::fail_output(Warn, build_stdout);
+            message::fail_output(message::Warn, build_stdout);
             return Ok(outcome);
         }
 
-        let expected = fs::read_to_string(&stderr_path)
+        let expected = std::fs::read_to_string(&stderr_path)
             .map_err(Error::ReadStderr)?
             .replace("\r\n", "\n");
 
@@ -445,7 +439,7 @@ impl Test {
             }
             Update::Overwrite => {
                 message::overwrite_stderr(&stderr_path, preferred);
-                fs::write(stderr_path, preferred).map_err(Error::WriteStderr)?;
+                std::fs::write(stderr_path, preferred).map_err(Error::WriteStderr)?;
                 Ok(Outcome::Passed)
             }
         }
@@ -456,7 +450,7 @@ fn check_exists(path: &Path) -> Result<()> {
     if path.exists() {
         return Ok(());
     }
-    match File::open(path) {
+    match std::fs::File::open(path) {
         Ok(_) => Ok(()),
         Err(err) => Err(Error::Open(path.to_owned(), err)),
     }
@@ -483,10 +477,9 @@ impl ExpandedTest {
 // Cargo to run the test at all. The next argument starting with `err_span_check=`
 // provides a filename filter. Only test cases whose filename contains the
 // filter string will be run.
-#[allow(clippy::needless_collect)] // false positive https://github.com/rust-lang/rust-clippy/issues/5991
 fn filter(tests: &mut Vec<ExpandedTest>) {
-    let filters = env::args_os()
-        .flat_map(OsString::into_string)
+    let filters = std::env::args_os()
+        .flat_map(std::ffi::OsString::into_string)
         .filter_map(|mut arg| {
             const PREFIX: &str = "err_span_check=";
             if arg.starts_with(PREFIX) && arg != PREFIX {
@@ -535,7 +528,7 @@ struct RustcMessage {
 
 struct ParsedOutputs {
     stdout: String,
-    stderrs: Map<PathBuf, Stderr>,
+    stderrs: BTreeMap<PathBuf, Stderr>,
 }
 
 struct Stderr {
@@ -555,12 +548,12 @@ impl Default for Stderr {
 fn parse_cargo_json(
     project: &Project,
     stdout: &[u8],
-    path_map: &Map<PathBuf, (&Name, &Test)>,
+    path_map: &BTreeMap<PathBuf, (&str, &Test)>,
 ) -> ParsedOutputs {
-    let mut map = Map::new();
+    let mut map = BTreeMap::new();
     let mut nonmessage_stdout = String::new();
     let mut remaining = &*String::from_utf8_lossy(stdout);
-    let mut seen = Set::new();
+    let mut seen = std::collections::HashSet::new();
     while !remaining.is_empty() {
         let Some(begin) = remaining.find("{\"reason\":") else {
             break;
@@ -595,7 +588,7 @@ fn parse_cargo_json(
             let normalized = normalize::diagnostics(
                 &de.message.rendered,
                 Context {
-                    krate: &name.0,
+                    krate: name,
                     source_dir: &project.source_dir,
                     workspace: &project.workspace,
                     input_file: &test.path,

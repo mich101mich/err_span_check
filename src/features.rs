@@ -1,22 +1,4 @@
-use serde::de::{self, Deserialize, DeserializeOwned, Deserializer};
-use serde_derive::Deserialize;
-use std::env;
-use std::error::Error;
-use std::ffi::OsStr;
-use std::fs;
-use std::path::PathBuf;
-
-pub(crate) fn find() -> Option<Vec<String>> {
-    try_find().ok()
-}
-
-struct Ignored;
-
-impl<E: Error> From<E> for Ignored {
-    fn from(_error: E) -> Self {
-        Ignored
-    }
-}
+use super::*;
 
 #[derive(Deserialize)]
 struct Build {
@@ -24,10 +6,10 @@ struct Build {
     features: Vec<String>,
 }
 
-fn try_find() -> Result<Vec<String>, Ignored> {
+pub(crate) fn find() -> Option<Vec<String>> {
     // This will look something like:
     //   /path/to/crate_name/target/debug/deps/test_name-HASH
-    let test_binary = env::args_os().next().ok_or(Ignored)?;
+    let test_binary = std::env::args_os().next()?;
 
     // The hash at the end is ascii so not lossy, rest of conversion doesn't
     // matter.
@@ -38,67 +20,61 @@ fn try_find() -> Result<Vec<String>, Ignored> {
     } else {
         test_binary_lossy.len() - 17..test_binary_lossy.len()
     };
-    let hash = test_binary_lossy.get(hash_range).ok_or(Ignored)?;
+    let hash = test_binary_lossy.get(hash_range)?;
     if !hash.starts_with('-') || !hash[1..].bytes().all(is_lower_hex_digit) {
-        return Err(Ignored);
+        return None;
     }
 
     let binary_path = PathBuf::from(&test_binary);
 
     // Feature selection is saved in:
     //   /path/to/crate_name/target/debug/.fingerprint/*-HASH/*-HASH.json
-    let up = binary_path
-        .parent()
-        .ok_or(Ignored)?
-        .parent()
-        .ok_or(Ignored)?;
+    let up = binary_path.parent()?.parent()?;
     let fingerprint_dir = up.join(".fingerprint");
     if !fingerprint_dir.is_dir() {
-        return Err(Ignored);
+        return None;
     }
 
-    let mut hash_matches = Vec::new();
-    for entry in fingerprint_dir.read_dir()? {
-        let entry = entry?;
-        let is_dir = entry.file_type()?.is_dir();
-        let matching_hash = entry.file_name().to_string_lossy().ends_with(hash);
-        if is_dir && matching_hash {
-            hash_matches.push(entry.path());
-        }
-    }
+    let hash_matches: Vec<_> = fingerprint_dir
+        .read_dir()
+        .ok()?
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.file_type().is_ok_and(|ft| ft.is_dir()))
+        .filter(|entry| entry.file_name().to_string_lossy().ends_with(hash))
+        .map(|entry| entry.path())
+        .collect();
 
-    if hash_matches.len() != 1 {
-        return Err(Ignored);
-    }
+    let [hash_match] = &hash_matches[..] else {
+        return None;
+    };
 
-    let mut json_matches = Vec::new();
-    for entry in hash_matches[0].read_dir()? {
-        let entry = entry?;
-        let is_file = entry.file_type()?.is_file();
-        let is_json = entry.path().extension() == Some(OsStr::new("json"));
-        if is_file && is_json {
-            json_matches.push(entry.path());
-        }
-    }
+    let json_matches: Vec<_> = hash_match
+        .read_dir()
+        .ok()?
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.file_type().is_ok_and(|ft| ft.is_file()))
+        .filter(|entry| entry.path().extension().is_some_and(|s| s == "json"))
+        .map(|entry| entry.path())
+        .collect();
 
-    if json_matches.len() != 1 {
-        return Err(Ignored);
-    }
+    let [json_match] = &json_matches[..] else {
+        return None;
+    };
 
-    let build_json = fs::read_to_string(&json_matches[0])?;
-    let build: Build = serde_json::from_str(&build_json)?;
-    Ok(build.features)
+    let build_json = std::fs::read_to_string(json_match).ok()?;
+    let build: Build = serde_json::from_str(&build_json).ok()?;
+    Some(build.features)
 }
 
 fn is_lower_hex_digit(byte: u8) -> bool {
-    byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)
+    matches!(byte, b'0'..=b'9' | b'a'..=b'f')
 }
 
-fn from_json<'de, T, D>(deserializer: D) -> Result<T, D::Error>
+fn from_json<'de, T, D>(deserializer: D) -> std::result::Result<T, D::Error>
 where
-    T: DeserializeOwned,
+    T: serde::de::DeserializeOwned,
     D: Deserializer<'de>,
 {
     let json = String::deserialize(deserializer)?;
-    serde_json::from_str(&json).map_err(de::Error::custom)
+    serde_json::from_str(&json).map_err(serde::de::Error::custom)
 }
