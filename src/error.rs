@@ -15,7 +15,7 @@ pub(crate) enum Error {
     #[error(transparent)]
     Io(#[from] io::Error),
     #[error("failed to read cargo metadata: {0}")]
-    Metadata(serde_json::Error),
+    Metadata(#[from] cargo_metadata::Error),
     #[error("compiler error does not match expected error")]
     Mismatch,
     #[error("Cargo.toml uses edition.workspace=true, but no edition found in workspace's manifest")]

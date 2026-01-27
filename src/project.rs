@@ -1,6 +1,4 @@
 use crate::{
-    Runner,
-    cargo::{self, PackageMetadata},
     expand::ExpandedTest,
     manifest::{generated, parsed},
     util::env::Update,
@@ -29,10 +27,11 @@ pub(crate) struct PathDependency {
 
 impl Runner {
     pub(crate) fn prepare(&self, tests: &[ExpandedTest]) -> Result<Project> {
-        let cargo::Metadata {
-            target_directory: target_dir,
-            workspace_root: workspace,
+        let cargo_metadata::Metadata {
+            target_directory,
+            workspace_root,
             packages,
+            ..
         } = cargo::metadata()?;
 
         let source_dir = cargo::manifest_dir()?;
@@ -45,7 +44,7 @@ impl Runner {
             .iter()
             .filter_map(|(name, dep)| {
                 let path = dep.path.as_ref()?;
-                if packages.iter().any(|p| &p.name == name) {
+                if packages.iter().any(|p| p.name == name) {
                     // Skip path dependencies coming from the workspace itself
                     None
                 } else {
@@ -58,7 +57,7 @@ impl Runner {
             .collect();
 
         let crate_name = &source_manifest.package.name;
-        let project_dir = target_dir
+        let project_dir = target_directory
             .join("tests")
             .join("err_span_check")
             .join(crate_name);
@@ -66,7 +65,7 @@ impl Runner {
 
         let project_name = format!("{}-tests", crate_name);
         let manifest = self.make_manifest(
-            &workspace,
+            workspace_root.as_std_path(),
             &project_name,
             &source_dir,
             &packages,
@@ -79,13 +78,13 @@ impl Runner {
         }
 
         Ok(Project {
-            dir: project_dir,
+            dir: project_dir.into_std_path_buf(),
             source_dir,
-            target_dir,
+            target_dir: target_directory.into_std_path_buf(),
             name: project_name,
             update: Update::env()?,
             features,
-            workspace,
+            workspace: workspace_root.into_std_path_buf(),
             path_dependencies,
             manifest,
             keep_going: false,
@@ -112,7 +111,7 @@ impl Runner {
         workspace: &Path,
         project_name: &str,
         source_dir: &Path,
-        packages: &[PackageMetadata],
+        packages: &[cargo_metadata::Package],
         tests: &[ExpandedTest],
         source_manifest: parsed::Manifest,
     ) -> Result<generated::Manifest> {
@@ -141,7 +140,7 @@ impl Runner {
                 has_lib_target = package_metadata
                     .targets
                     .iter()
-                    .any(|target| target.crate_types != ["bin"]);
+                    .any(|target| target.crate_types != [cargo_metadata::CrateType::Bin]);
             }
         }
         if has_lib_target {

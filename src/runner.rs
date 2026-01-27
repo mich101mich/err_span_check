@@ -65,10 +65,10 @@ impl Runner {
 
         print_col!("\n\n");
 
-        if report.failures > 0 && project.name != "err_span_check-tests" {
+        if report.failures > 0 {
             panic!("{} of {} tests failed", report.failures, len);
         }
-        if report.created_wip > 0 && project.name != "err_span_check-tests" {
+        if report.created_wip > 0 {
             panic!(
                 "successfully created new stderr files for {} test cases",
                 report.created_wip,

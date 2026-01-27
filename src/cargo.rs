@@ -8,25 +8,6 @@ use std::{
     process::{Command, Output, Stdio},
 };
 
-#[derive(Deserialize)]
-pub(crate) struct Metadata {
-    pub target_directory: PathBuf,
-    pub workspace_root: PathBuf,
-    pub packages: Vec<PackageMetadata>,
-}
-
-#[derive(Deserialize)]
-pub(crate) struct PackageMetadata {
-    pub name: String,
-    pub targets: Vec<BuildTarget>,
-    pub manifest_path: PathBuf,
-}
-
-#[derive(Deserialize)]
-pub(crate) struct BuildTarget {
-    pub crate_types: Vec<String>,
-}
-
 fn raw_cargo() -> Command {
     match std::env::var_os("CARGO") {
         Some(cargo) => Command::new(cargo),
@@ -37,8 +18,11 @@ fn raw_cargo() -> Command {
 fn cargo(project: &Project) -> Command {
     let mut cmd = raw_cargo();
     cmd.current_dir(&project.dir);
-    cmd.envs(cargo_target_dir(project));
     cmd.env_remove("RUSTFLAGS");
+    cmd.env(
+        "CARGO_TARGET_DIR",
+        project.target_dir.join("tests").join("err_span_check"),
+    );
     cmd.env("CARGO_INCREMENTAL", "0");
     cmd.arg("--offline");
 
@@ -52,24 +36,16 @@ fn cargo(project: &Project) -> Command {
     cmd
 }
 
-fn cargo_target_dir(project: &Project) -> impl Iterator<Item = (&'static str, PathBuf)> {
-    std::iter::once((
-        "CARGO_TARGET_DIR",
-        project.target_dir.join("tests").join("err_span_check"),
-    ))
-}
-
 pub(crate) fn manifest_dir() -> Result<PathBuf> {
     if let Some(manifest_dir) = std::env::var_os("CARGO_MANIFEST_DIR") {
         return Ok(PathBuf::from(manifest_dir));
     }
-    let mut dir = std::env::current_dir()?;
-    loop {
+    for dir in std::env::current_dir()?.ancestors() {
         if dir.join("Cargo.toml").exists() {
-            return Ok(dir);
+            return Ok(dir.to_path_buf());
         }
-        dir = dir.parent().ok_or(Error::ProjectDir)?.to_path_buf();
     }
+    Err(Error::ProjectDir)
 }
 
 pub(crate) fn build_dependencies(project: &mut Project) -> Result<()> {
@@ -159,18 +135,11 @@ pub(crate) fn build_all_tests(project: &Project) -> Result<Output> {
         .map_err(Error::Cargo)
 }
 
-pub(crate) fn metadata() -> Result<Metadata> {
-    let output = raw_cargo()
-        .arg("metadata")
-        .arg("--no-deps")
-        .arg("--format-version=1")
-        .output()
-        .map_err(Error::Cargo)?;
-
-    serde_json::from_slice(&output.stdout).map_err(|err| {
-        print_col!("{}", String::from_utf8_lossy(&output.stderr));
-        Error::Metadata(err)
-    })
+pub(crate) fn metadata() -> Result<cargo_metadata::Metadata> {
+    cargo_metadata::MetadataCommand::new()
+        .no_deps()
+        .exec()
+        .map_err(Into::into)
 }
 
 fn features(project: &Project) -> Vec<String> {
