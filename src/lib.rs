@@ -218,7 +218,6 @@ mod message;
 
 mod cargo;
 mod error;
-mod expand;
 mod manifest;
 mod normalize;
 mod project;
@@ -227,7 +226,6 @@ mod rustflags;
 mod util {
     pub(crate) mod env;
     pub(crate) mod features;
-    pub(crate) mod flock;
 }
 
 pub(crate) use error::{Error, Result};
@@ -235,51 +233,29 @@ pub(crate) use error::{Error, Result};
 pub(crate) use serde::{Deserialize, Serialize, de::Deserializer, ser::Serializer};
 
 pub(crate) use std::{
-    cell::RefCell,
     collections::BTreeMap,
     path::{Path, PathBuf},
 };
 
-/// TODO: document
-#[derive(Debug)]
-pub struct TestCases {
-    runner: RefCell<Runner>,
-}
-
-#[derive(Debug)]
-struct Runner {
-    tests: Vec<Test>,
-}
-
-#[derive(Clone, Debug)]
-struct Test {
-    path: PathBuf,
-}
-
-impl TestCases {
-    /// TODO: document
-    #[allow(clippy::new_without_default)]
-    pub fn new() -> Self {
-        TestCases {
-            runner: RefCell::new(Runner { tests: Vec::new() }),
-        }
-    }
-
-    /// TODO: document
-    pub fn test<P: AsRef<Path>>(&self, path: P) {
-        self.runner.borrow_mut().tests.push(Test {
-            path: path.as_ref().to_owned(),
-        });
-    }
-}
-
-impl std::panic::RefUnwindSafe for TestCases {}
-
-#[doc(hidden)]
-impl Drop for TestCases {
-    fn drop(&mut self) {
-        if !std::thread::panicking() {
-            self.runner.borrow_mut().run();
+/// The entry point for this crate. Call this once inside of a test function.
+///
+/// ```
+/// # #[allow(clippy::test_attr_in_doctest)]
+/// #[test]
+/// fn test() {
+///     err_span_check::run_on_fail_dir();
+/// }
+/// ```
+///
+/// And that's it. All `*.rs` files anywhere within the `tests/fail` directory will be tested as compile-fail tests.
+pub fn run_on_fail_dir() {
+    match runner::run() {
+        Ok(()) => {}
+        Err(err) => {
+            if !err.already_printed() {
+                message::fail(err);
+            }
+            panic!("err_span_check failed");
         }
     }
 }

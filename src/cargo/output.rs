@@ -1,6 +1,6 @@
 use cargo_metadata::{Message, diagnostic::DiagnosticLevel};
 
-use crate::{Test, normalize, normalize::Context, project::Project, *};
+use crate::{normalize, normalize::Context, project::Project, *};
 
 pub(crate) struct ParsedOutputs {
     pub stdout: String,
@@ -24,7 +24,7 @@ impl Default for Stderr {
 pub(crate) fn parse_cargo_json(
     project: &Project,
     stdout: &[u8],
-    path_map: &BTreeMap<PathBuf, (&str, &Test)>,
+    path_map: &BTreeMap<PathBuf, (&str, &Path)>,
 ) -> ParsedOutputs {
     let mut map = BTreeMap::<PathBuf, Stderr>::new();
     let mut nonmessage_stdout = String::new();
@@ -70,7 +70,7 @@ pub(crate) fn parse_cargo_json(
             krate: name,
             source_dir: &project.source_dir,
             workspace: &project.workspace,
-            input_file: &test.path,
+            input_file: test,
             target_dir: &project.target_dir,
             path_dependencies: &project.path_dependencies,
         };

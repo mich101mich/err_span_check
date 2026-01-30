@@ -3,16 +3,9 @@ pub(crate) mod term;
 
 use crate::*;
 
-pub(crate) enum Level {
-    Fail,
-    Warn,
-}
-
-pub(crate) use self::Level::*;
-
 const LINE: &str = "------------------------------------------------------------";
 
-pub(crate) fn prepare_fail(err: Error) {
+pub(crate) fn fail(err: Error) {
     if err.already_printed() {
         return;
     }
@@ -22,14 +15,8 @@ pub(crate) fn prepare_fail(err: Error) {
     println_col!();
 }
 
-pub(crate) fn test_fail(err: Error) {
-    if err.already_printed() {
-        return;
-    }
-
-    println_col!(BoldRed => "error");
-    println_col!(Red => "{}", err);
-    println_col!();
+pub(crate) fn no_tests() {
+    println_col!(Yellow => "There are no err_span_check tests.");
 }
 
 pub(crate) fn no_tests_enabled() {
@@ -40,8 +27,8 @@ pub(crate) fn ok() {
     println_col!(Green => "ok");
 }
 
-pub(crate) fn begin_test(test: &Test) {
-    let display_name = test.path.display();
+pub(crate) fn begin_test(test: &Path) {
+    let display_name = test.display();
 
     print_col!("test ");
     print_col!(Bold => "{}", display_name);
@@ -51,30 +38,6 @@ pub(crate) fn begin_test(test: &Test) {
 pub(crate) fn should_not_have_compiled() {
     println_col!(BoldRed => "error");
     println_col!(Red => "Expected test case to fail to compile, but it succeeded.");
-    println_col!();
-}
-
-pub(crate) fn write_stderr_wip(wip_path: &Path, stderr_path: &Path, stderr: &str) {
-    let wip_path = wip_path.display();
-    let stderr_path = stderr_path.display();
-
-    println_col!(BoldYellow => "wip");
-    println_col!();
-    print_col!(BoldYellow => "NOTE");
-    println_col!(": writing the following output to `{wip_path}`.");
-    println_col!("Move this file to `{stderr_path}` to accept it as correct.");
-    println_col!(Yellow => "{LINE}\n{stderr}\n{LINE}");
-    println_col!();
-}
-
-pub(crate) fn overwrite_stderr(stderr_path: &Path, stderr: &str) {
-    let stderr_path = stderr_path.display();
-
-    println_col!(BoldYellow => "wip");
-    println_col!();
-    print_col!(BoldYellow => "NOTE");
-    println_col!(": writing the following output to `{stderr_path}`.");
-    println_col!(Yellow => "{LINE}\n{stderr}\n{LINE}");
     println_col!();
 }
 
@@ -93,23 +56,15 @@ pub(crate) fn mismatch(expected: &str, actual: &str) {
     println_col!();
 }
 
-pub(crate) fn fail_output(level: Level, stdout: &str) {
+pub(crate) fn fail_output(stdout: &str) {
     if stdout.is_empty() {
         println_col!();
         return;
     }
 
     let normalized = normalize::trim(stdout);
-    match level {
-        Fail => {
-            println_col!(BoldRed => "STDOUT:");
-            println_col!(Red => "{LINE}\n{normalized}\n{LINE}")
-        }
-        Warn => {
-            println_col!(BoldYellow => "STDOUT:");
-            println_col!(Yellow => "{LINE}\n{normalized}\n{LINE}")
-        }
-    };
+    println_col!(BoldRed => "STDOUT:");
+    println_col!(Red => "{LINE}\n{normalized}\n{LINE}");
     println_col!();
 }
 

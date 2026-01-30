@@ -1,5 +1,3 @@
-use glob::{GlobError, PatternError};
-
 use std::{io, path::PathBuf};
 
 #[derive(Debug, thiserror::Error)]
@@ -11,8 +9,6 @@ pub(crate) enum Error {
     #[error("failed to read manifest {0}: {1}")]
     GetManifest(PathBuf, Box<Error>),
     #[error(transparent)]
-    Glob(#[from] GlobError),
-    #[error(transparent)]
     Io(#[from] io::Error),
     #[error("failed to read cargo metadata: {0}")]
     Metadata(#[from] cargo_metadata::Error),
@@ -22,12 +18,8 @@ pub(crate) enum Error {
     NoWorkspaceManifest,
     #[error("{1}: {0}")]
     Open(PathBuf, io::Error),
-    #[error(transparent)]
-    Pattern(#[from] PatternError),
     #[error("failed to determine name of project dir")]
     ProjectDir,
-    #[error("failed to read stderr file: {0}")]
-    ReadStderr(io::Error),
     #[error("expected test case to fail to compile, but it succeeded")]
     ShouldNotHaveCompiled,
     #[error(transparent)]
@@ -36,8 +28,10 @@ pub(crate) enum Error {
     TomlSer(#[from] toml::ser::Error),
     #[error("unrecognized value of ERR_SPAN_CHECK: {0:?}")]
     UpdateVar(String),
-    #[error("failed to write stderr file: {0}")]
-    WriteStderr(io::Error),
+    #[error("could not find or access tests/fail directory relative to {0}")]
+    NoFailDir(PathBuf),
+    #[error("Error searching tests/fail directory: {0}")]
+    FailDirSearch(#[from] walkdir::Error),
 }
 
 pub(crate) type Result<T> = std::result::Result<T, Error>;

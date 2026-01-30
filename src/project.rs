@@ -1,5 +1,4 @@
 use crate::{
-    expand::ExpandedTest,
     manifest::{generated, parsed},
     util::env::Update,
     *,
@@ -25,8 +24,8 @@ pub(crate) struct PathDependency {
     pub normalized_path: PathBuf,
 }
 
-impl Runner {
-    pub(crate) fn prepare(&self, tests: &[ExpandedTest]) -> Result<Project> {
+impl Project {
+    pub(crate) fn prepare(tests: &[runner::Test]) -> Result<Self> {
         let cargo_metadata::Metadata {
             target_directory,
             workspace_root,
@@ -64,7 +63,7 @@ impl Runner {
         std::fs::create_dir_all(&project_dir)?;
 
         let project_name = format!("{}-tests", crate_name);
-        let manifest = self.make_manifest(
+        let manifest = Self::make_manifest(
             workspace_root.as_std_path(),
             &project_name,
             &source_dir,
@@ -91,28 +90,27 @@ impl Runner {
         })
     }
 
-    pub(crate) fn write(&self, project: &mut Project) -> Result<()> {
-        let manifest_toml = toml::to_string(&project.manifest)?;
-        std::fs::write(project.dir.join("Cargo.toml"), manifest_toml)?;
+    pub(crate) fn write(&mut self) -> Result<()> {
+        let manifest_toml = toml::to_string(&self.manifest)?;
+        std::fs::write(self.dir.join("Cargo.toml"), manifest_toml)?;
 
         let main_rs = b"\
             #![allow(unused_crate_dependencies, missing_docs)]\n\
             fn main() {}\n\
         ";
-        std::fs::write(project.dir.join("main.rs"), &main_rs[..])?;
+        std::fs::write(self.dir.join("main.rs"), &main_rs[..])?;
 
-        cargo::build_dependencies(project)?;
+        cargo::build_dependencies(self)?;
 
         Ok(())
     }
 
     fn make_manifest(
-        &self,
         workspace: &Path,
         project_name: &str,
         source_dir: &Path,
         packages: &[cargo_metadata::Package],
-        tests: &[ExpandedTest],
+        tests: &[runner::Test],
         source_manifest: parsed::Manifest,
     ) -> Result<generated::Manifest> {
         use manifest::{Dependency, EditionOrInherit};
@@ -219,12 +217,10 @@ impl Runner {
         });
 
         for expanded in tests {
-            if expanded.error.is_none() {
-                manifest.bins.push(generated::Bin {
-                    name: expanded.name.clone(),
-                    path: source_dir.join(&expanded.test.path),
-                });
-            }
+            manifest.bins.push(generated::Bin {
+                name: expanded.name.clone(),
+                path: source_dir.join(&expanded.path),
+            });
         }
 
         Ok(manifest)
