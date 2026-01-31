@@ -31,6 +31,25 @@ macro_rules! test_normalize {
     };
 }
 
-mod tests {
-    automod::dir!("src/tests");
-}
+mod and_n_others;
+mod and_others_verbose;
+mod basic;
+mod cargo_registry;
+mod cargo_registry_sparse;
+mod consteval;
+mod dir_backslash;
+mod dropshot_required_by;
+mod erased_serde_trait_bound;
+mod gated_feature;
+mod ghost_note_help;
+mod long_file_names;
+mod multiline_note;
+mod proc_macro_panic;
+mod py03_url;
+mod right_aligned_line_number;
+mod rust_lib;
+mod rust_lib_with_githash;
+mod strip_path_dependencies;
+mod traits_must_be_implemented;
+mod type_dir_backslash;
+mod uniffi_out_dir;

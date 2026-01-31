@@ -30,6 +30,3 @@ termcolor = "1.0.4"
 thiserror = "2.0.18"
 toml = "0.9.8"
 walkdir = "2.5.0"
-
-[dev-dependencies]
-automod = "1.0.10"
