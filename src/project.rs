@@ -15,7 +15,6 @@ pub(crate) struct Project {
     pub workspace: PathBuf,
     pub path_dependencies: Vec<PathDependency>,
     pub manifest: generated::Manifest,
-    pub keep_going: bool,
 }
 
 #[derive(Debug)]
@@ -25,7 +24,7 @@ pub(crate) struct PathDependency {
 }
 
 impl Project {
-    pub(crate) fn prepare(tests: &[runner::Test]) -> Result<Self> {
+    pub(crate) fn prepare() -> Result<Self> {
         let cargo_metadata::Metadata {
             target_directory,
             workspace_root,
@@ -68,7 +67,6 @@ impl Project {
             &project_name,
             &source_dir,
             &packages,
-            tests,
             source_manifest,
         )?;
 
@@ -76,7 +74,16 @@ impl Project {
             enabled_features.retain(|feature| manifest.features.contains_key(feature));
         }
 
-        Ok(Project {
+        let manifest_toml = toml::to_string(&manifest)?;
+        std::fs::write(project_dir.join("Cargo.toml"), manifest_toml)?;
+
+        let main_rs = b"\
+            #![allow(unused_crate_dependencies, missing_docs)]\n\
+            fn main() {}\n\
+        ";
+        std::fs::write(project_dir.join("main.rs"), main_rs)?;
+
+        let mut project = Project {
             dir: project_dir.into_std_path_buf(),
             source_dir,
             target_dir: target_directory.into_std_path_buf(),
@@ -86,23 +93,11 @@ impl Project {
             workspace: workspace_root.into_std_path_buf(),
             path_dependencies,
             manifest,
-            keep_going: false,
-        })
-    }
+        };
 
-    pub(crate) fn write(&mut self) -> Result<()> {
-        let manifest_toml = toml::to_string(&self.manifest)?;
-        std::fs::write(self.dir.join("Cargo.toml"), manifest_toml)?;
+        cargo::build_dependencies(&mut project)?;
 
-        let main_rs = b"\
-            #![allow(unused_crate_dependencies, missing_docs)]\n\
-            fn main() {}\n\
-        ";
-        std::fs::write(self.dir.join("main.rs"), &main_rs[..])?;
-
-        cargo::build_dependencies(self)?;
-
-        Ok(())
+        Ok(project)
     }
 
     fn make_manifest(
@@ -110,7 +105,6 @@ impl Project {
         project_name: &str,
         source_dir: &Path,
         packages: &[cargo_metadata::Package],
-        tests: &[runner::Test],
         source_manifest: parsed::Manifest,
     ) -> Result<generated::Manifest> {
         use manifest::{Dependency, EditionOrInherit};
@@ -215,13 +209,6 @@ impl Project {
             name: project_name.to_owned(),
             path: Path::new("main.rs").to_owned(),
         });
-
-        for expanded in tests {
-            manifest.bins.push(generated::Bin {
-                name: expanded.name.clone(),
-                path: source_dir.join(&expanded.path),
-            });
-        }
 
         Ok(manifest)
     }

@@ -20,7 +20,7 @@ pub(crate) fn no_tests() {
 }
 
 pub(crate) fn no_tests_enabled() {
-    println_col!(Yellow => "There are no err_span_check tests enabled yet.");
+    println_col!(Yellow => "No tests matched to provided filters.");
 }
 
 pub(crate) fn ok() {

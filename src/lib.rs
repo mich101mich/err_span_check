@@ -223,12 +223,14 @@ mod normalize;
 mod project;
 mod runner;
 mod rustflags;
+mod test_case;
 mod util {
     pub(crate) mod env;
     pub(crate) mod features;
 }
 
 pub(crate) use error::{Error, Result};
+pub(crate) use test_case::TestFile;
 
 pub(crate) use serde::{Deserialize, Serialize, de::Deserializer, ser::Serializer};
 

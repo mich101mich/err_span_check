@@ -1,3 +1,5 @@
+use std::collections::{HashMap, HashSet};
+
 use crate::{
     cargo::{self, Stderr, parse_cargo_json},
     normalize::Variations,
@@ -5,16 +7,6 @@ use crate::{
     util::env::Update,
     *,
 };
-
-struct Report {
-    failures: usize,
-}
-
-#[derive(Debug)]
-pub(crate) struct Test {
-    pub name: String,
-    pub path: PathBuf,
-}
 
 pub(crate) fn run() -> Result<()> {
     let base_dir = cargo::manifest_dir()?;
@@ -25,126 +17,128 @@ pub(crate) fn run() -> Result<()> {
         return Err(Error::NoFailDir(base_dir));
     }
 
-    let mut tests = vec![];
+    let mut test_files = vec![];
 
-    for entry in walkdir::WalkDir::new(fail_dir).follow_links(true) {
+    let file_iter = walkdir::WalkDir::new(fail_dir)
+        .min_depth(1)
+        .follow_links(true)
+        .sort_by_file_name();
+
+    let mut unique_files = HashMap::new();
+
+    for entry in file_iter {
         let entry = entry?;
         if !entry.file_type().is_file() {
             continue;
         }
-        let path = entry.path();
-        if path.extension().and_then(|s| s.to_str()) != Some("rs") {
-            continue;
-        }
-        let index = tests.len();
-        let name = format!("err_span_check{:03}", index);
-        tests.push(Test {
-            name,
-            path: path.to_owned(),
-        });
+        let path = entry.into_path();
+        let parsed_name = path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .and_then(|f| f.rsplit_once('.'))
+            .filter(|(stem, ext)| !stem.is_empty() && ext == &"rs")
+            .map(|(stem, _)| stem.to_owned());
+
+        let file = if let Some(stem) = parsed_name {
+            // Ensure unique filenames by appending a counter
+            let count = unique_files.entry(stem.clone()).or_insert(0);
+            *count += 1;
+            let stem = format!("{}_{}", stem, count);
+            TestFile::from_file(path, &stem)
+        } else {
+            let error = Error::InvalidFilename(path.clone());
+            TestFile::from_error(path, error)
+        };
+        test_files.push(file);
     }
 
-    if tests.is_empty() {
+    if test_files.is_empty() {
         message::no_tests();
         return Ok(());
     }
 
-    filter(&mut tests);
+    filter(&mut test_files);
 
-    let mut project = Project::prepare(&tests)?;
-    project.write()?;
-
-    print_col!("\n\n");
-
-    let len = tests.len();
-    let mut report = Report { failures: 0 };
-
-    if tests.is_empty() {
+    if test_files.is_empty() {
         message::no_tests_enabled();
         return Ok(());
-    } else if project.keep_going {
-        report = match run_all(&project, tests) {
-            Ok(failures) => failures,
-            Err(err) => {
-                message::fail(err);
-                Report { failures: len }
-            }
-        }
-    } else {
-        for test in tests {
-            match run_test(&test.path, &project, &test.name) {
-                Ok(()) => {}
-                Err(err) => {
-                    report.failures += 1;
-                    message::fail(err);
-                }
-            }
-        }
     }
+
+    let project = Project::prepare()?;
 
     print_col!("\n\n");
 
-    if report.failures > 0 {
-        panic!("{} of {} tests failed", report.failures, len);
-    }
-    Ok(())
-}
+    let tests_dir = project.dir.join("tests");
+    std::fs::create_dir_all(&tests_dir)?;
 
-fn run_all(project: &Project, tests: Vec<Test>) -> Result<Report> {
-    let mut report = Report { failures: 0 };
-    let mut path_map = BTreeMap::new();
-    for t in &tests {
-        let src_path = project.source_dir.join(&t.path);
-        let src_path = src_path.canonicalize().unwrap_or(src_path);
-        path_map.insert(src_path, (t.name.as_str(), t.path.as_ref()));
+    let mut failed = 0;
+    let mut total = 0;
+    let name_map = BTreeMap::new();
+    let mut active_test_files = HashSet::new();
+
+    for file in &test_files {
+        if file.error.is_some() {
+            continue;
+        }
+
+        for test in &file.test_cases {
+            let test_file_path = tests_dir.join(&test.filename);
+
+            // Only write if content has changed
+            let current_content = std::fs::read(&test_file_path).ok();
+            if current_content.as_deref() != Some(test.source_code.as_bytes()) {
+                std::fs::write(&test_file_path, &test.source_code)?;
+            }
+
+            active_test_files.insert(test.filename.clone());
+        }
     }
 
-    let output = cargo::build_all_tests(project)?;
-    let parsed = parse_cargo_json(project, &output.stdout, &path_map);
+    // Clean up test files that are no longer in the input set
+    for entry in walkdir::WalkDir::new(&tests_dir).min_depth(1).max_depth(1) {
+        let Ok(entry) = entry else { continue };
+        if !entry.file_type().is_file() {
+            continue;
+        }
+        if let Some(filename) = entry.file_name().to_str()
+            && !active_test_files.contains(filename)
+        {
+            std::fs::remove_file(entry.path())?;
+        }
+    }
+
+    let output = cargo::check_tests(&project)?;
+    let parsed = parse_cargo_json(&project, &output.stdout, &name_map);
     let fallback = Stderr::default();
 
-    for t in tests {
+    for t in test_files {
         message::begin_test(&t.path);
 
         let src_path = project.source_dir.join(&t.path);
         let src_path = src_path.canonicalize().unwrap_or(src_path);
         let this_test = parsed.stderrs.get(&src_path).unwrap_or(&fallback);
-        match check_compile_fail(project, &t.name, this_test.success, "", &this_test.stderr) {
+
+        match check_compile_fail(&project, this_test.success, "", &this_test.stderr) {
             Ok(()) => {}
             Err(error) => {
-                report.failures += 1;
+                failed += 1;
                 message::fail(error);
             }
         }
+        total += 1;
     }
 
-    Ok(report)
-}
+    print_col!("\n\n");
 
-fn run_test(path: &Path, project: &Project, name: &str) -> Result<()> {
-    message::begin_test(path);
+    if failed > 0 {
+        panic!("{failed} of {total} tests failed");
+    }
 
-    let mut path_map = BTreeMap::new();
-    let src_path = project.source_dir.join(path);
-    let src_path = src_path.canonicalize().unwrap_or(src_path);
-    path_map.insert(src_path.clone(), (name, path));
-
-    let output = cargo::build_test(project, name)?;
-    let parsed = parse_cargo_json(project, &output.stdout, &path_map);
-    let fallback = Stderr::default();
-    let this_test = parsed.stderrs.get(&src_path).unwrap_or(&fallback);
-    check_compile_fail(
-        project,
-        name,
-        this_test.success,
-        &parsed.stdout,
-        &this_test.stderr,
-    )
+    Ok(())
 }
 
 fn check_compile_fail(
     project: &Project,
-    _name: &str,
     success: bool,
     build_stdout: &str,
     variations: &Variations,
@@ -186,7 +180,7 @@ fn check_compile_fail(
 // Cargo to run the test at all. The next argument starting with `err_span_check=`
 // provides a filename filter. Only test cases whose filename contains the
 // filter string will be run.
-fn filter(tests: &mut Vec<Test>) {
+fn filter(tests: &mut Vec<TestFile>) {
     let filters = std::env::args_os()
         .filter_map(|arg| {
             let s = arg.as_os_str().to_str()?;

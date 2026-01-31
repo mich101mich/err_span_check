@@ -32,6 +32,13 @@ pub(crate) enum Error {
     NoFailDir(PathBuf),
     #[error("Error searching tests/fail directory: {0}")]
     FailDirSearch(#[from] walkdir::Error),
+    #[error("Failed to parse test case from {0}:{1}: {2}")]
+    TestCaseParse(PathBuf, usize, String),
+    #[error(
+        r#"Invalid filename: {0:?}. Expected "<valid-nonempty-utf8>.rs"
+Note that the tests/fail directory is only allowed to contain compile-fail test files."#
+    )]
+    InvalidFilename(PathBuf),
 }
 
 pub(crate) type Result<T> = std::result::Result<T, Error>;

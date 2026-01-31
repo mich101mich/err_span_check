@@ -78,14 +78,6 @@ pub(crate) fn build_dependencies(project: &mut Project) -> Result<()> {
         return Err(Error::CargoFail);
     }
 
-    // Check if this Cargo contains https://github.com/rust-lang/cargo/pull/10383
-    project.keep_going = command
-        .arg("--keep-going")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success());
-
     Ok(())
 }
 
@@ -112,21 +104,12 @@ pub(crate) fn build_test(project: &Project, name: &str) -> Result<Output> {
         .map_err(Error::Cargo)
 }
 
-pub(crate) fn build_all_tests(project: &Project) -> Result<Output> {
-    let _ = cargo(project)
-        .arg("clean")
-        .arg("--package")
-        .arg(&project.name)
-        .arg("--color=never")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-
+pub(crate) fn check_tests(project: &Project) -> Result<Output> {
     cargo(project)
         .arg("check")
-        .args(target())
-        .arg("--bins")
+        .arg("--tests")
         .args(features(project))
+        .args(target())
         .arg("--quiet")
         .arg("--color=never")
         .arg("--message-format=json")
