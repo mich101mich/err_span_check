@@ -230,12 +230,13 @@ mod util {
 }
 
 pub(crate) use error::{Error, Result};
+pub(crate) use project::Project;
 pub(crate) use test_case::TestFile;
 
 pub(crate) use serde::{Deserialize, Serialize, de::Deserializer, ser::Serializer};
 
 pub(crate) use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap, HashSet},
     path::{Path, PathBuf},
 };
 
@@ -254,9 +255,7 @@ pub fn run_on_fail_dir() {
     match runner::run() {
         Ok(()) => {}
         Err(err) => {
-            if !err.already_printed() {
-                message::fail(err);
-            }
+            message::fail(err);
             panic!("err_span_check failed");
         }
     }

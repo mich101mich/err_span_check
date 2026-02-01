@@ -6,10 +6,6 @@ use crate::*;
 const LINE: &str = "------------------------------------------------------------";
 
 pub(crate) fn fail(err: Error) {
-    if err.already_printed() {
-        return;
-    }
-
     print_col!(BoldRed => "ERROR");
     println_col!(": {}", err);
     println_col!();
@@ -23,24 +19,25 @@ pub(crate) fn no_tests_enabled() {
     println_col!(Yellow => "No tests matched to provided filters.");
 }
 
+/// Print the beginning of a test case.
+pub(crate) fn begin_test(name: &str, path: &Path, line: usize) {
+    print_col!("test ");
+    print_col!(Bold => "{name} ({}:{line})", path.display());
+    print_col!(" ... ");
+}
+
+/// Complete the test case with an "ok" message.
 pub(crate) fn ok() {
     println_col!(Green => "ok");
 }
 
-pub(crate) fn begin_test(test: &Path) {
-    let display_name = test.display();
-
-    print_col!("test ");
-    print_col!(Bold => "{}", display_name);
-    print_col!(" ... ");
-}
-
+/// Complete the test case with a "failed" message because a compile-fail test built successfully.
 pub(crate) fn should_not_have_compiled() {
     println_col!(BoldRed => "error");
     println_col!(Red => "Expected test case to fail to compile, but it succeeded.");
-    println_col!();
 }
 
+/// Complete the test case with a "failed" message because of a mismatch.
 pub(crate) fn mismatch(expected: &str, actual: &str) {
     println_col!(BoldRed => "mismatch");
     println_col!();
@@ -56,24 +53,8 @@ pub(crate) fn mismatch(expected: &str, actual: &str) {
     println_col!();
 }
 
-pub(crate) fn fail_output(stdout: &str) {
-    if stdout.is_empty() {
-        println_col!();
-        return;
-    }
-
-    let normalized = normalize::trim(stdout);
-    println_col!(BoldRed => "STDOUT:");
-    println_col!(Red => "{LINE}\n{normalized}\n{LINE}");
-    println_col!();
-}
-
-pub(crate) fn warnings(warnings: &str) {
-    if warnings.is_empty() {
-        return;
-    }
-
-    println_col!(BoldYellow => "WARNINGS:");
-    println_col!(Yellow => "{LINE}\n{}\n{LINE}", warnings);
-    println_col!();
+/// Complete the test case with an "updating" message because the test is being updated.
+pub(crate) fn updated(path: &Path) {
+    println_col!(BoldYellow => "updating");
+    println_col!(Yellow => "Test at {} will be updated to match actual output.", path.display());
 }

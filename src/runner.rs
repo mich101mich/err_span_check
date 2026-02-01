@@ -1,12 +1,4 @@
-use std::collections::{HashMap, HashSet};
-
-use crate::{
-    cargo::{self, Stderr, parse_cargo_json},
-    normalize::Variations,
-    project::Project,
-    util::env::Update,
-    *,
-};
+use crate::*;
 
 pub(crate) fn run() -> Result<()> {
     let base_dir = cargo::manifest_dir()?;
@@ -71,9 +63,6 @@ pub(crate) fn run() -> Result<()> {
     let tests_dir = project.dir.join("tests");
     std::fs::create_dir_all(&tests_dir)?;
 
-    let mut failed = 0;
-    let mut total = 0;
-    let name_map = BTreeMap::new();
     let mut active_test_files = HashSet::new();
 
     for file in &test_files {
@@ -107,25 +96,61 @@ pub(crate) fn run() -> Result<()> {
         }
     }
 
-    let output = cargo::check_tests(&project)?;
-    let parsed = parse_cargo_json(&project, &output.stdout, &name_map);
-    let fallback = Stderr::default();
+    let mut output = cargo::check_tests(&project)?;
 
-    for t in test_files {
-        message::begin_test(&t.path);
-
-        let src_path = project.source_dir.join(&t.path);
-        let src_path = src_path.canonicalize().unwrap_or(src_path);
-        let this_test = parsed.stderrs.get(&src_path).unwrap_or(&fallback);
-
-        match check_compile_fail(&project, this_test.success, "", &this_test.stderr) {
-            Ok(()) => {}
-            Err(error) => {
-                failed += 1;
-                message::fail(error);
-            }
+    let mut total = 0;
+    let mut failed = 0;
+    for file in test_files {
+        if file.error.is_some() {
+            total += 1;
+            failed += 1;
+            message::begin_test("err_span_check file parse", &file.path, 0);
+            message::fail(file.error.unwrap());
+            continue;
         }
-        total += 1;
+
+        let mut new_file_content = String::new();
+        for test in &file.test_cases {
+            message::begin_test(&test.display_name, &file.path, test.start_line_number);
+            total += 1;
+
+            let local_path = PathBuf::from("tests").join(&test.filename);
+            let full_path = project.dir.join(&local_path);
+            let full_path = full_path.canonicalize().unwrap_or(full_path);
+
+            let test_output = output.remove(&full_path).unwrap_or_default();
+
+            if test_output.is_empty() {
+                message::should_not_have_compiled();
+                failed += 1;
+                new_file_content.push_str(&test.expected);
+                continue;
+            }
+
+            let errors = test_output
+                .into_iter()
+                .map(|e| {
+                    let rendered = e.rendered.as_deref().unwrap_or("");
+                    let normalized = normalize::diagnostics(rendered, &project, &local_path);
+                    (e, normalized)
+                })
+                .collect::<Vec<_>>();
+
+            let actual = test.annotate(&errors);
+            if test.expected == actual {
+                message::ok();
+            } else if project.should_update {
+                message::updated(&file.path);
+            } else {
+                message::mismatch(&test.expected, &actual);
+                failed += 1;
+            }
+            new_file_content.push_str(&actual);
+        }
+
+        if project.should_update && new_file_content != file.original_content {
+            std::fs::write(&file.path, new_file_content)?;
+        }
     }
 
     print_col!("\n\n");
@@ -135,40 +160,6 @@ pub(crate) fn run() -> Result<()> {
     }
 
     Ok(())
-}
-
-fn check_compile_fail(
-    project: &Project,
-    success: bool,
-    build_stdout: &str,
-    variations: &Variations,
-) -> Result<()> {
-    let preferred = variations.preferred();
-
-    if success {
-        message::should_not_have_compiled();
-        message::fail_output(build_stdout);
-        message::warnings(preferred);
-        return Err(Error::ShouldNotHaveCompiled);
-    }
-
-    let expected = String::new(); // TODO:
-
-    if variations.any(|stderr| expected == stderr) {
-        message::ok();
-        return Ok(());
-    }
-
-    match project.update {
-        Update::None => {
-            message::mismatch(&expected, preferred);
-            Err(Error::Mismatch)
-        }
-        Update::Overwrite => {
-            // TODO:
-            Ok(())
-        }
-    }
 }
 
 // Filter which test cases are run by err_span_check.

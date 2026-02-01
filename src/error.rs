@@ -12,16 +12,10 @@ pub(crate) enum Error {
     Io(#[from] io::Error),
     #[error("failed to read cargo metadata: {0}")]
     Metadata(#[from] cargo_metadata::Error),
-    #[error("compiler error does not match expected error")]
-    Mismatch,
     #[error("Cargo.toml uses edition.workspace=true, but no edition found in workspace's manifest")]
     NoWorkspaceManifest,
-    #[error("{1}: {0}")]
-    Open(PathBuf, io::Error),
     #[error("failed to determine name of project dir")]
     ProjectDir,
-    #[error("expected test case to fail to compile, but it succeeded")]
-    ShouldNotHaveCompiled,
     #[error(transparent)]
     TomlDe(#[from] toml::de::Error),
     #[error(transparent)]
@@ -42,11 +36,3 @@ Note that the tests/fail directory is only allowed to contain compile-fail test 
 }
 
 pub(crate) type Result<T> = std::result::Result<T, Error>;
-
-impl Error {
-    pub fn already_printed(&self) -> bool {
-        use self::Error::*;
-
-        matches!(self, CargoFail | Mismatch | ShouldNotHaveCompiled)
-    }
-}

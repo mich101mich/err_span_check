@@ -1,6 +1,5 @@
 use crate::{
     manifest::{generated, parsed},
-    util::env::Update,
     *,
 };
 
@@ -10,11 +9,10 @@ pub(crate) struct Project {
     pub source_dir: PathBuf,
     pub target_dir: PathBuf,
     pub name: String,
-    pub update: Update,
+    pub should_update: bool,
     pub features: Option<Vec<String>>,
     pub workspace: PathBuf,
     pub path_dependencies: Vec<PathDependency>,
-    pub manifest: generated::Manifest,
 }
 
 #[derive(Debug)]
@@ -88,11 +86,10 @@ impl Project {
             source_dir,
             target_dir: target_directory.into_std_path_buf(),
             name: project_name,
-            update: Update::env()?,
+            should_update: util::env::should_update()?,
             features,
             workspace: workspace_root.into_std_path_buf(),
             path_dependencies,
-            manifest,
         };
 
         cargo::build_dependencies(&mut project)?;

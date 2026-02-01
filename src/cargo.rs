@@ -1,11 +1,10 @@
-use crate::{project::Project, *};
+use crate::*;
 
-mod output;
-pub(crate) use output::{Stderr, parse_cargo_json};
+use std::{fs::File, process::Command};
 
-use std::{
-    fs::File,
-    process::{Command, Output, Stdio},
+use cargo_metadata::{
+    Message,
+    diagnostic::{Diagnostic, DiagnosticLevel},
 };
 
 fn raw_cargo() -> Command {
@@ -81,30 +80,7 @@ pub(crate) fn build_dependencies(project: &mut Project) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn build_test(project: &Project, name: &str) -> Result<Output> {
-    let _ = cargo(project)
-        .arg("clean")
-        .arg("--package")
-        .arg(&project.name)
-        .arg("--color=never")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-
-    cargo(project)
-        .arg("check")
-        .args(target())
-        .arg("--bin")
-        .arg(name)
-        .args(features(project))
-        .arg("--quiet")
-        .arg("--color=never")
-        .arg("--message-format=json")
-        .output()
-        .map_err(Error::Cargo)
-}
-
-pub(crate) fn check_tests(project: &Project) -> Result<Output> {
+pub(crate) fn check_tests(project: &Project) -> Result<HashMap<PathBuf, Vec<Diagnostic>>> {
     cargo(project)
         .arg("check")
         .arg("--tests")
@@ -115,6 +91,7 @@ pub(crate) fn check_tests(project: &Project) -> Result<Output> {
         .arg("--message-format=json")
         .arg("--keep-going")
         .output()
+        .map(|out| parse_cargo_json(&out.stdout))
         .map_err(Error::Cargo)
 }
 
@@ -138,4 +115,43 @@ fn features(project: &Project) -> Vec<String> {
 
 fn target() -> Vec<&'static str> {
     vec!["--target", target_triple::TARGET]
+}
+
+pub(crate) fn parse_cargo_json(stdout: &[u8]) -> HashMap<PathBuf, Vec<Diagnostic>> {
+    let mut stderrs = HashMap::<PathBuf, Vec<Diagnostic>>::new();
+    let mut seen = HashSet::new();
+
+    for message in Message::parse_stream(stdout) {
+        // unwrap: only fails if read failed, but we have all data in memory
+        let msg = match message.unwrap() {
+            Message::CompilerMessage(msg) => msg,
+            Message::TextLine(text) => {
+                println!("{text}");
+                continue;
+            }
+            _ => continue, // Don't care about other messages
+        };
+
+        if msg.message.level != DiagnosticLevel::Error {
+            continue;
+        }
+
+        if seen.contains(&msg) {
+            // Discard duplicate messages. This might no longer be necessary
+            // after https://github.com/rust-lang/rust/issues/106571 is fixed.
+            // Normally rustc would filter duplicates itself and I think this is
+            // a short-lived bug.
+            continue;
+        }
+        seen.insert(msg.clone());
+
+        let src_path = &msg.target.src_path;
+        let src_path = src_path
+            .canonicalize()
+            .unwrap_or_else(|_| src_path.as_std_path().to_owned());
+
+        stderrs.entry(src_path).or_default().push(msg.message);
+    }
+
+    stderrs
 }
