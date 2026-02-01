@@ -136,11 +136,12 @@ pub(crate) fn run() -> Result<()> {
                 })
                 .collect::<Vec<_>>();
 
-            let actual = test.annotate(&errors);
+            let actual = test.annotate_with(&errors);
             if test.expected == actual {
                 message::ok();
             } else if project.should_update {
                 message::updated(&file.path);
+                failed += 1;
             } else {
                 message::mismatch(&test.expected, &actual);
                 failed += 1;

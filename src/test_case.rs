@@ -20,7 +20,9 @@ pub(crate) struct TestCase {
     pub display_name: String,
     /// The filename to use for this test case when writing it to disk.
     pub filename: String,
+    /// Line number in TestFile where this test case originates.
     pub start_line_number: usize,
+    /// The header line of this test case.
     pub header_line: String,
     /// The expected output for this test case.
     pub expected: String,
@@ -77,6 +79,7 @@ const HEADER_INDICATOR: &str = "/////";
 const BLOCK_SEPARATOR: &str =
     "////////////////////////////////////////////////////////////////////////////////";
 const INLINE_MARKER: &str = "//~";
+const E: &str = ""; // print n repetitions of a character by printing an empty string with padding
 
 impl TestCase {
     pub fn from_lines<'a, I>(
@@ -143,12 +146,12 @@ Got: {start_line}"#
         })
     }
 
-    pub(crate) fn annotate(&self, errors: &[(Diagnostic, String)]) -> String {
+    pub(crate) fn annotate_with(&self, errors: &[(Diagnostic, String)]) -> String {
         let mut annotations = vec![vec![]; self.source_code_lines.len()];
 
         let mut remaining_errors = String::new();
-        for (e, normalized) in errors {
-            if let Some((line, annotation)) = self.to_annotation(e) {
+        for (error, normalized) in errors {
+            if let Some((line, annotation)) = self.to_annotation(error) {
                 annotations[line].push(annotation);
             } else {
                 writeln!(remaining_errors, "{normalized}").unwrap();
@@ -206,33 +209,61 @@ Got: {start_line}"#
 
         let (byte_offset, source_line) = self.source_code_lines.get(line)?;
 
-        let indentation = source_line
+        // Prefix: "    //~"
+        let mut prefix = source_line
             .chars()
             .take_while(|&b| b.is_whitespace())
             .collect::<String>();
+        prefix += INLINE_MARKER;
 
-        let num_prefix_spaces = (primary.byte_start as usize)
-            .checked_sub(byte_offset + indentation.len() + INLINE_MARKER.len())?;
+        let spaces = (primary.byte_start as usize).checked_sub(byte_offset + prefix.len())?;
 
         // empty spans (.start() or .end()) are indicated with at least one caret
-        let num_carets = (primary.byte_end - primary.byte_start).max(1) as usize;
+        let carets = (primary.byte_end - primary.byte_start).max(1) as usize;
 
-        let message = msg.message.replace('\n', "\\n");
+        // First line prefix: "    //~    ^^^^^^^^ "
+        let caret_line = format!("{prefix}{E: <spaces$}{E:^<carets$} ");
 
-        let mut inline_annotation = String::new();
-        // Write "    //~    ^^^^^^^^ message"
-        write!(
-            inline_annotation,
-            "{indentation}{INLINE_MARKER}{0: <1$}{0:^<2$} {message}",
-            "", num_prefix_spaces, num_carets,
-        )
-        .unwrap();
+        // Following line prefix: "    //~             "
+        write!(prefix, "{E: <spaces$}{E: <carets$} ").unwrap();
 
+        let mut out = String::new();
         if let Some(label) = &primary.label {
-            let label = label.replace('\n', " \\n ");
-            write!(inline_annotation, ": {label}").unwrap();
+            // Write:
+            //     //~  ^^^^^^^^ error: message0
+            //     //~                  message1
+            //     //~           label: label0
+            //     //~                  label1
+
+            const MESSAGE_PREFIX: &str = "error: ";
+            let message_line = format!("{caret_line}{MESSAGE_PREFIX}");
+            let message_indent = format!("{prefix}{E: <0$}", MESSAGE_PREFIX.len());
+            write_indented(&mut out, &message_line, &message_indent, &msg.message);
+
+            const LABEL_PREFIX: &str = "label: ";
+            let label_line = format!("{prefix}{LABEL_PREFIX}");
+            let label_indent = format!("{prefix}{E: <0$}", LABEL_PREFIX.len());
+            write_indented(&mut out, &label_line, &label_indent, label);
+        } else {
+            // Write:
+            //     //~  ^^^^^^^^ message0
+            //     //~           message1
+            write_indented(&mut out, &caret_line, &prefix, &msg.message);
         }
 
-        Some((line, (primary.byte_start, inline_annotation)))
+        if out.ends_with('\n') {
+            out.pop(); // remove trailing newline
+        }
+
+        Some((line, (primary.byte_start, out)))
+    }
+}
+
+/// Write a string with different prefixes for the first line and the following lines
+fn write_indented(f: &mut String, first_line: &str, indentation: &str, text: &str) {
+    let mut prefix = Some(first_line);
+    for line in text.lines() {
+        let prefix = prefix.take().unwrap_or(indentation);
+        writeln!(f, "{prefix}{line}").unwrap();
     }
 }
