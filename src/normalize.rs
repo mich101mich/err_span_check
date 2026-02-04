@@ -108,6 +108,8 @@ impl<'a> Filter<'a> {
     fn apply(&mut self, index: usize) -> Option<String> {
         let mut line = self.all_lines[index].to_owned();
 
+        line.truncate(line.trim_end().len());
+
         if self.hide_numbers > 0 {
             hide_leading_numbers(&mut line);
             self.hide_numbers -= 1;
@@ -262,6 +264,7 @@ impl<'a> Filter<'a> {
         }
 
         if line.starts_with("error: aborting due to ")
+            || line.starts_with("error: could not compile `")
             || line.starts_with("error: Could not compile `")
             || line.starts_with("For more information about this error, try `rustc --explain")
             || line.starts_with("Some errors have detailed explanations:")
@@ -269,8 +272,6 @@ impl<'a> Filter<'a> {
         {
             return None;
         }
-
-        line.truncate(line.trim_end().len());
 
         if line
             .trim_start()

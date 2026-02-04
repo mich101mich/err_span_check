@@ -1,3 +1,14 @@
+macro_rules! unwrap_or {
+    ( $( $value:literal )?, $default:literal ) => {
+        {
+            // If $value is not present, this will just be a block containing $default.
+            // If $value is present, this will be a block containing a useless `$default;` statement,
+            // followed by $value, which evaluates to $value.
+            $default $(; $value)?
+        }
+    };
+}
+
 macro_rules! test_normalize {
     (
         $(DIR=$dir:literal)?
@@ -9,23 +20,27 @@ macro_rules! test_normalize {
     ) => {
         #[test]
         fn test() {
-            let context = crate::normalize::Context {
-                krate: "err_span_check000",
-                input_file: std::path::Path::new({ "tests/ui/error.rs" $(; $input)? }),
-                source_dir: std::path::Path::new({ "/git/err_span_check/test_suite" $(; $dir)? }),
-                workspace: std::path::Path::new({ "/git/err_span_check" $(; $workspace)? }),
-                target_dir: std::path::Path::new({ "/git/err_span_check/target" $(; $target)? }),
-                path_dependencies: &[crate::project::PathDependency {
-                    name: String::from("diesel"),
-                    normalized_path: std::path::PathBuf::from("/home/user/documents/rust/diesel/diesel"),
+            use std::path::PathBuf;
+            let project = crate::Project {
+                dir: PathBuf::new(),
+                source_dir: PathBuf::from(unwrap_or!($($dir)?, "/git/err_span_check/test_suite")),
+                target_dir: PathBuf::from(unwrap_or!($($target)?, "/git/err_span_check/target")),
+                name: "err_span_check000".to_string(),
+                should_update: false,
+                features: None,
+                workspace: PathBuf::from(unwrap_or!($($workspace)?, "/git/err_span_check")),
+                path_dependencies: vec![crate::project::PathDependency {
+                    name: "diesel".to_string(),
+                    normalized_path: PathBuf::from("/home/user/documents/rust/diesel/diesel"),
                 }],
             };
+            let local_path = PathBuf::from(unwrap_or!($($input)?, "tests/ui/error.rs"));
+
             let original = $original;
-            let variations = crate::normalize::diagnostics(original, context);
-            let preferred = variations.preferred();
+            let variations = crate::normalize::diagnostics(original, &project, &local_path);
             let expected = $expected;
-            if preferred != expected {
-                panic!("\nACTUAL: \"{}\"\nEXPECTED: \"{}\"", preferred, expected);
+            if variations != expected {
+                panic!("\nACTUAL: \"{}\"\nEXPECTED: \"{}\"", variations, expected);
             }
         }
     };

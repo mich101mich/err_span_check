@@ -16,7 +16,6 @@ exclude = [
     "/.github",
     "/*.bat",
     "/*.sh",
-    "/todo.md",
     "/submodules",
     "/.gitmodules",
 ]

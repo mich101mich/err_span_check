@@ -6,8 +6,13 @@ use cargo_metadata::diagnostic::Diagnostic;
 
 #[derive(Debug)]
 pub(crate) struct TestFile {
+    /// The absolute path to this test file.
     pub path: PathBuf,
+    /// The relative path to this test file from the base directory.
+    pub relative_path: PathBuf,
+    /// The original content of this test file.
     pub original_content: String,
+    /// The test cases contained in this test file.
     pub test_cases: Vec<TestCase>,
     /// If an error occurred while processing this test file, it is stored here.
     /// This allows us to continue processing other test files.
@@ -33,19 +38,20 @@ pub(crate) struct TestCase {
 }
 
 impl TestFile {
-    pub fn from_error(path: PathBuf, error: Error) -> Self {
+    pub fn from_error(path: PathBuf, relative_path: PathBuf, error: Error) -> Self {
         TestFile {
             path,
+            relative_path,
             original_content: String::new(),
             test_cases: vec![],
             error: Some(error),
         }
     }
 
-    pub fn from_file(path: PathBuf, file_stem: &str) -> Self {
+    pub fn from_file(path: PathBuf, relative_path: PathBuf, file_stem: &str) -> Self {
         let original_content = match std::fs::read_to_string(&path) {
             Ok(original_content) => original_content,
-            Err(e) => return TestFile::from_error(path, e.into()),
+            Err(e) => return Self::from_error(path, relative_path, e.into()),
         };
 
         let mut lines = original_content
@@ -61,13 +67,14 @@ impl TestFile {
                 Ok(test_case) => test_cases.push(test_case),
                 Err((line_number, e)) => {
                     let error = Error::TestCaseParse(path.clone(), line_number, e);
-                    return Self::from_error(path, error);
+                    return Self::from_error(path, relative_path, error);
                 }
             }
         }
 
         TestFile {
             path,
+            relative_path,
             original_content,
             test_cases,
             error: None,
@@ -191,7 +198,11 @@ Got: {start_line}"#
 
         // Append remaining errors as comments
         for line in remaining_errors.lines() {
-            writeln!(actual, "// {line}").unwrap();
+            if line.trim().is_empty() {
+                writeln!(actual, "//").unwrap();
+            } else {
+                writeln!(actual, "// {line}").unwrap();
+            }
         }
 
         actual
@@ -228,7 +239,9 @@ Got: {start_line}"#
         write!(prefix, "{E: <spaces$}{E: <carets$} ").unwrap();
 
         let mut out = String::new();
-        if let Some(label) = &primary.label {
+        if let Some(label) = &primary.label
+            && label != &msg.message
+        {
             // Write:
             //     //~  ^^^^^^^^ error: message0
             //     //~                  message1

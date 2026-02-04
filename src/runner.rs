@@ -2,7 +2,7 @@ use crate::*;
 
 pub(crate) fn run() -> Result<()> {
     let base_dir = cargo::manifest_dir()?;
-    let fail_dir = base_dir.join("tests/fail");
+    let fail_dir = base_dir.join("tests").join("fail");
     if !fail_dir.is_dir() {
         // We could say "no tests found" here, but the user explicitly called this function, so they want to run tests.
         // If the directory is missing, it probably means they set up their project incorrectly.
@@ -31,15 +31,20 @@ pub(crate) fn run() -> Result<()> {
             .filter(|(stem, ext)| !stem.is_empty() && ext == &"rs")
             .map(|(stem, _)| stem.to_owned());
 
+        let relative_path = path
+            .strip_prefix(&base_dir)
+            .map(ToOwned::to_owned)
+            .unwrap_or(path.clone());
+
         let file = if let Some(stem) = parsed_name {
             // Ensure unique filenames by appending a counter
             let count = unique_files.entry(stem.clone()).or_insert(0);
             *count += 1;
             let stem = format!("{}_{}", stem, count);
-            TestFile::from_file(path, &stem)
+            TestFile::from_file(path, relative_path, &stem)
         } else {
             let error = Error::InvalidFilename(path.clone());
-            TestFile::from_error(path, error)
+            TestFile::from_error(path, relative_path, error)
         };
         test_files.push(file);
     }
@@ -104,14 +109,18 @@ pub(crate) fn run() -> Result<()> {
         if file.error.is_some() {
             total += 1;
             failed += 1;
-            message::begin_test("err_span_check file parse", &file.path, 0);
+            message::begin_test("err_span_check file parse", &file.relative_path, 0);
             message::fail(file.error.unwrap());
             continue;
         }
 
         let mut new_file_content = String::new();
         for test in &file.test_cases {
-            message::begin_test(&test.display_name, &file.path, test.start_line_number);
+            message::begin_test(
+                &test.display_name,
+                &file.relative_path,
+                test.start_line_number,
+            );
             total += 1;
 
             let local_path = PathBuf::from("tests").join(&test.filename);
