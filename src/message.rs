@@ -46,15 +46,11 @@ pub(crate) fn mismatch(expected: &str, actual: &str) {
     println_col!();
     println_col!(BoldRed => "ACTUAL OUTPUT:");
     println_col!(Red => "{LINE}\n{actual}\n{LINE}");
-    print_col!("note: If the ");
-    print_col!(Red => "actual output");
-    println_col!(" is the correct output you can bless it by rerunning");
-    println_col!("      your test with the environment variable ERR_SPAN_CHECK=overwrite");
     println_col!();
 }
 
 /// Complete the test case with an "updating" message because the test is being updated.
 pub(crate) fn updated(path: &Path) {
-    println_col!(BoldYellow => "updating");
+    println_col!(BoldRed => "mismatch");
     println_col!(Yellow => "Test at {} will be updated to match actual output.", path.display());
 }
