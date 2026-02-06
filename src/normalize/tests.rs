@@ -11,9 +11,9 @@ macro_rules! unwrap_or {
 
 macro_rules! test_normalize {
     (
-        $(DIR=$dir:literal)?
         $(WORKSPACE=$workspace:literal)?
         $(INPUT=$input:literal)?
+        $(OUTPUT=$output:literal)?
         $(TARGET=$target:literal)?
         $original:literal
         $expected:literal
@@ -23,7 +23,6 @@ macro_rules! test_normalize {
             use std::path::PathBuf;
             let project = crate::Project {
                 dir: PathBuf::new(),
-                source_dir: PathBuf::from(unwrap_or!($($dir)?, "/git/err_span_check/test_suite")),
                 target_dir: PathBuf::from(unwrap_or!($($target)?, "/git/err_span_check/target")),
                 name: "err_span_check000".to_string(),
                 should_update: false,
@@ -34,13 +33,15 @@ macro_rules! test_normalize {
                     normalized_path: PathBuf::from("/home/user/documents/rust/diesel/diesel"),
                 }],
             };
-            let local_path = PathBuf::from(unwrap_or!($($input)?, "tests/ui/error.rs"));
+            let local_path = PathBuf::from(unwrap_or!($($input)?, "tests/ui/error_1_2.rs"));
+            let replaced_path = PathBuf::from(unwrap_or!($($output)?, "tests/ui/error.rs"));
 
-            let original = $original;
-            let variations = crate::normalize::diagnostics(original, &project, &local_path);
+            let normalizer = crate::normalize::Normalizer::new(&project, &local_path, &replaced_path);
+
+            let normalized = normalizer.diagnostics($original);
             let expected = $expected;
-            if variations != expected {
-                panic!("\nACTUAL: \"{}\"\nEXPECTED: \"{}\"", variations, expected);
+            if normalized != expected {
+                panic!("\nACTUAL: \"{}\"\nEXPECTED: \"{}\"", normalized, expected);
             }
         }
     };

@@ -3,33 +3,28 @@ mod tests;
 
 use super::*;
 
-pub(crate) struct Context {
+pub(crate) struct Normalizer {
+    /// Name of the crate being tested -> becomes `$CRATE`
     krate: String,
-    source_dir_pat: String,
+    /// Normalized path to the target directory -> becomes `$OUT_DIR`
     target_dir_pat: String,
+    /// Normalized path to the input test file
     input_file_pat: String,
+    /// Normalized path to the workspace directory -> becomes `$WORKSPACE`
     workspace_pat: String,
+    /// Path to replace input_file_pat with in the output, since test files are split
+    replaced_path: String,
+    /// Dependencies from local paths
     path_dependencies: Vec<(String, String)>,
 }
 
-impl Context {
-    pub(crate) fn new(project: &Project, local_path: &Path) -> Self {
-        fn path_to_pat(path: &Path) -> String {
-            path.to_string_lossy()
-                .to_ascii_lowercase()
-                .replace('\\', "/")
-        }
-        fn dir_to_pat(path: &Path) -> String {
-            let mut pat = path_to_pat(path);
-            if !pat.ends_with('/') {
-                pat.push('/');
-            }
-            pat
-        }
+impl Normalizer {
+    pub(crate) fn new(project: &Project, local_path: &Path, replaced_path: &Path) -> Self {
         let input_file_pat = path_to_pat(local_path);
         let target_dir_pat = dir_to_pat(&project.target_dir);
-        let source_dir_pat = dir_to_pat(&project.source_dir);
         let workspace_pat = dir_to_pat(&project.workspace);
+
+        let replaced_path = replaced_path.to_string_lossy().replace('\\', "/");
 
         let path_dependencies = project
             .path_dependencies
@@ -41,22 +36,44 @@ impl Context {
             })
             .collect::<Vec<_>>();
 
-        Context {
+        Normalizer {
             krate: project.name.to_owned(),
-            source_dir_pat,
             target_dir_pat,
             input_file_pat,
             workspace_pat,
+            replaced_path,
             path_dependencies,
         }
     }
-}
 
-pub(crate) fn diagnostics(output: &str, project: &Project, local_path: &Path) -> String {
-    let output = output.replace("\r\n", "\n");
-    let context = Context::new(project, local_path);
+    pub(crate) fn message(&self, output: &str) -> String {
+        // replace the file in case a proc macro uses the file name in the message
+        replace_case_insensitive(output, &self.input_file_pat, &self.replaced_path)
+    }
 
-    apply(&output, &context)
+    pub(crate) fn diagnostics(&self, original: &str) -> String {
+        let mut normalized = String::new();
+
+        let lines: Vec<&str> = original.lines().collect();
+        let mut filter = Filter {
+            all_lines: &lines,
+            context: self,
+            hide_numbers: 0,
+            other_types: None,
+        };
+        for i in 0..lines.len() {
+            if let Some(line) = filter.apply(i) {
+                normalized += &line;
+                if !normalized.ends_with("\n\n") {
+                    normalized.push('\n');
+                }
+            }
+        }
+
+        normalized = unindent(normalized);
+
+        trim(normalized)
+    }
 }
 
 pub(crate) fn trim<S: AsRef<[u8]>>(output: S) -> String {
@@ -73,33 +90,9 @@ pub(crate) fn trim<S: AsRef<[u8]>>(output: S) -> String {
     normalized
 }
 
-fn apply(original: &str, context: &Context) -> String {
-    let mut normalized = String::new();
-
-    let lines: Vec<&str> = original.lines().collect();
-    let mut filter = Filter {
-        all_lines: &lines,
-        context,
-        hide_numbers: 0,
-        other_types: None,
-    };
-    for i in 0..lines.len() {
-        if let Some(line) = filter.apply(i) {
-            normalized += &line;
-            if !normalized.ends_with("\n\n") {
-                normalized.push('\n');
-            }
-        }
-    }
-
-    normalized = unindent(normalized);
-
-    trim(normalized)
-}
-
 struct Filter<'a> {
     all_lines: &'a [&'a str],
-    context: &'a Context,
+    context: &'a Normalizer,
     hide_numbers: usize,
     other_types: Option<usize>,
 }
@@ -125,22 +118,32 @@ impl<'a> Filter<'a> {
             None
         };
 
-        if prefix.is_some() {
+        if let Some(prefix) = prefix {
             line = line.replace('\\', "/");
             let line_lower = line.to_ascii_lowercase();
-            let target_dir_pat = &self.context.target_dir_pat;
-            let source_dir_pat = &self.context.source_dir_pat;
+
+            let prefix_offset = indent + prefix.len();
+            let after_prefix = &line_lower[prefix_offset..];
+
+            let Normalizer {
+                target_dir_pat,
+                input_file_pat,
+                workspace_pat,
+                path_dependencies,
+                replaced_path,
+                ..
+            } = &self.context;
             let mut other_crate = false;
 
-            if line_lower.find(target_dir_pat) == Some(indent + 4) {
-                let mut offset = indent + 4 + target_dir_pat.len();
+            if after_prefix.starts_with(target_dir_pat) {
+                let mut offset = prefix_offset + target_dir_pat.len();
                 let mut out_dir_crate_name = None;
                 while let Some(slash) = line[offset..].find('/') {
                     let component = &line[offset..offset + slash];
                     if component == "out" {
                         if let Some(out_dir_crate_name) = out_dir_crate_name {
                             let replacement = format!("$OUT_DIR[{}]", out_dir_crate_name);
-                            line.replace_range(indent + 4..offset + 3, &replacement);
+                            line.replace_range(prefix_offset..offset + 3, &replacement);
                             other_crate = true;
                             break;
                         }
@@ -154,29 +157,21 @@ impl<'a> Filter<'a> {
                     }
                     offset += slash + 1;
                 }
-            } else if let Some(i) = line_lower.find(source_dir_pat) {
-                if i == indent + 4 {
-                    line.replace_range(i..i + source_dir_pat.len(), "");
-                    let input_file_pat = &self.context.input_file_pat;
-                    if line_lower[i + source_dir_pat.len()..].starts_with(input_file_pat) {
-                        // Keep line numbers only within the input file (the
-                        // path passed to our `fn compile_fail`. All other
-                        // source files get line numbers erased below.
-                        return Some(line);
-                    }
-                } else {
-                    line.replace_range(i..i + source_dir_pat.len() - 1, "$DIR");
-                }
+            } else if after_prefix.starts_with(input_file_pat) {
+                // Keep line numbers only within the input file (the
+                // path passed to our `fn compile_fail`. All other
+                // source files get line numbers erased below.
+
+                let range = prefix_offset..prefix_offset + input_file_pat.len();
+                line.replace_range(range, replaced_path);
+                return Some(line);
+            } else if let Some(i) = line_lower.find(workspace_pat) {
+                line.replace_range(i..i + workspace_pat.len() - 1, "$WORKSPACE");
                 other_crate = true;
-            } else {
-                let workspace_pat = &self.context.workspace_pat;
-                if let Some(i) = line_lower.find(workspace_pat) {
-                    line.replace_range(i..i + workspace_pat.len() - 1, "$WORKSPACE");
-                    other_crate = true;
-                }
             }
+
             if !other_crate {
-                for (name, path_dep_pat) in &self.context.path_dependencies {
+                for (name, path_dep_pat) in path_dependencies {
                     if let Some(i) = line_lower.find(path_dep_pat) {
                         line.replace_range(i..i + path_dep_pat.len() - 1, name);
                         other_crate = true;
@@ -184,6 +179,7 @@ impl<'a> Filter<'a> {
                     }
                 }
             }
+
             if !other_crate {
                 if let Some(pos) = line.find("/rustlib/src/rust/src/") {
                     // --> /home/.rustup/toolchains/nightly/lib/rustlib/src/rust/src/libstd/net/ip.rs:83:1
@@ -323,11 +319,29 @@ impl<'a> Filter<'a> {
         }
 
         line = line.replace(&self.context.krate, "$CRATE");
-        line = replace_case_insensitive(&line, &self.context.source_dir_pat, "$DIR/");
+        line = replace_case_insensitive(
+            &line,
+            &self.context.input_file_pat,
+            &self.context.replaced_path,
+        );
         line = replace_case_insensitive(&line, &self.context.workspace_pat, "$WORKSPACE/");
 
         Some(line)
     }
+}
+
+fn path_to_pat(path: &Path) -> String {
+    path.to_string_lossy()
+        .to_ascii_lowercase()
+        .replace('\\', "/")
+}
+
+fn dir_to_pat(path: &Path) -> String {
+    let mut pat = path_to_pat(path);
+    if !pat.ends_with('/') {
+        pat.push('/');
+    }
+    pat
 }
 
 fn is_ascii_lowercase_hex(s: &str) -> bool {

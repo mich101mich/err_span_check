@@ -1,5 +1,4 @@
 test_normalize! {
-    DIR="/pyo3"
     WORKSPACE="/pyo3"
 "
 error: `async fn` is not yet supported for Python functions.

@@ -14,10 +14,26 @@ pub(crate) fn run() -> Result<()> {
 
     let mut test_files = vec![];
 
-    let file_iter = walkdir::WalkDir::new(fail_dir)
+    let is_nightly = rustc_version::version_meta()
+        .is_ok_and(|meta| meta.channel == rustc_version::Channel::Nightly);
+
+    let file_iter = walkdir::WalkDir::new(&fail_dir)
         .min_depth(1)
         .follow_links(true)
-        .sort_by_file_name();
+        .sort_by_file_name()
+        .into_iter()
+        .filter_entry(|e| {
+            if !e.file_type().is_dir() {
+                return true;
+            }
+            // If on nightly, skip folders called "stable" and vice versa
+            let name = e.file_name().to_string_lossy();
+            if is_nightly {
+                name != "stable"
+            } else {
+                name != "nightly"
+            }
+        });
 
     let mut unique_files = HashMap::new();
 
@@ -31,11 +47,13 @@ pub(crate) fn run() -> Result<()> {
             .file_name()
             .and_then(|s| s.to_str())
             .and_then(|f| f.rsplit_once('.'))
-            .filter(|(stem, ext)| !stem.is_empty() && ext == &"rs")
+            .filter(|(stem, ext)| !stem.is_empty() && *ext == "rs")
             .map(|(stem, _)| stem.to_owned());
 
+        // TODO: check git status
+
         let relative_path = path
-            .strip_prefix(&base_dir)
+            .strip_prefix(&fail_dir)
             .map(ToOwned::to_owned)
             .unwrap_or(path.clone());
 
@@ -141,20 +159,13 @@ Note that the tests/fail directory is only allowed to contain compile-fail test 
                 continue;
             }
 
-            let errors = test_output
-                .into_iter()
-                .map(|e| {
-                    let rendered = e.rendered.as_deref().unwrap_or("");
-                    let normalized = normalize::diagnostics(rendered, &project, &local_path);
-                    (e, normalized)
-                })
-                .collect::<Vec<_>>();
+            let normalize = normalize::Normalizer::new(&project, &local_path, &file.relative_path);
 
-            let actual = test.annotate_with(&errors);
+            let actual = test.annotate_with(&test_output, &normalize);
             if test.expected == actual {
                 message::ok();
             } else if project.should_update {
-                message::updated(&file.path);
+                message::updated(&file.relative_path);
                 failed += 1;
             } else {
                 message::mismatch(&test.expected, &actual);

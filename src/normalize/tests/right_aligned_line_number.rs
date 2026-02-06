@@ -1,5 +1,6 @@
 test_normalize! {
     INPUT="tests/ui-testing-optout.rs"
+    OUTPUT="tests/ui-testing-optout.rs"
 "
 error[E0412]: cannot find type `F` in this scope
   --> $DIR/ui-testing-optout.rs:92:10

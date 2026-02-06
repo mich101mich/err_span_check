@@ -1,4 +1,4 @@
-use super::*;
+use super::{normalize::Normalizer, *};
 
 use std::fmt::Write;
 
@@ -102,6 +102,7 @@ impl TestCase {
         I: Iterator<Item = (usize, &'a str)>,
     {
         if !start_line.starts_with(HEADER_INDICATOR) {
+            // TODO: add support for setup code
             let msg = format!(
                 r#"Invalid test case start line.
 Test cases have a header line that starts with at least "{HEADER_INDICATOR}".
@@ -156,14 +157,16 @@ Got: {start_line}"#
         })
     }
 
-    pub(crate) fn annotate_with(&self, errors: &[(Diagnostic, String)]) -> String {
+    pub(crate) fn annotate_with(&self, errors: &[Diagnostic], normalize: &Normalizer) -> String {
         let mut annotations = vec![vec![]; self.source_code_lines.len()];
 
         let mut remaining_errors = String::new();
-        for (error, normalized) in errors {
-            if let Some((line, annotation)) = self.to_annotation(error) {
+        for error in errors {
+            if let Some((line, annotation)) = self.to_annotation(error, normalize) {
                 annotations[line].push(annotation);
             } else {
+                let normalized =
+                    normalize.diagnostics(error.rendered.as_deref().unwrap_or_default());
                 writeln!(remaining_errors, "{normalized}").unwrap();
             }
         }
@@ -212,7 +215,11 @@ Got: {start_line}"#
     }
 
     /// Tries to convert a compiler diagnostic message into an inline annotation
-    fn to_annotation(&self, msg: &Diagnostic) -> Option<(usize, (u32, String))> {
+    fn to_annotation(
+        &self,
+        msg: &Diagnostic,
+        normalize: &Normalizer,
+    ) -> Option<(usize, (u32, String))> {
         let primary = msg.spans.iter().find(|s| s.is_primary)?;
 
         if primary.line_start != primary.line_end {
@@ -241,10 +248,14 @@ Got: {start_line}"#
         // Following line prefix: "    //~             "
         write!(prefix, "{E: <spaces$}{E: <carets$} ").unwrap();
 
+        let message = normalize.message(&msg.message);
+
         let mut out = String::new();
         if let Some(label) = &primary.label
             && label != &msg.message
         {
+            let label = normalize.message(label);
+
             // Write:
             //     //~  ^^^^^^^^ error: message0
             //     //~                  message1
@@ -254,17 +265,17 @@ Got: {start_line}"#
             const MESSAGE_PREFIX: &str = "error: ";
             let message_line = format!("{caret_line}{MESSAGE_PREFIX}");
             let message_indent = format!("{prefix}{E: <0$}", MESSAGE_PREFIX.len());
-            write_indented(&mut out, &message_line, &message_indent, &msg.message);
+            write_indented(&mut out, &message_line, &message_indent, &message);
 
             const LABEL_PREFIX: &str = "label: ";
             let label_line = format!("{prefix}{LABEL_PREFIX}");
             let label_indent = format!("{prefix}{E: <0$}", LABEL_PREFIX.len());
-            write_indented(&mut out, &label_line, &label_indent, label);
+            write_indented(&mut out, &label_line, &label_indent, &label);
         } else {
             // Write:
             //     //~  ^^^^^^^^ message0
             //     //~           message1
-            write_indented(&mut out, &caret_line, &prefix, &msg.message);
+            write_indented(&mut out, &caret_line, &prefix, &message);
         }
 
         if out.ends_with('\n') {

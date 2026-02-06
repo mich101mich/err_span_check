@@ -1,6 +1,6 @@
 test_normalize! {"
 error: `self` parameter is only allowed in associated functions
-  --> /git/err_span_check/test_suite/tests/ui/error.rs:11:23
+  --> tests/ui/error_1_2.rs:11:23
    |
 11 | async fn bad_endpoint(self) -> Result<HttpResponseOkObject<()>, HttpError> {
    |                       ^^^^ not semantically valid as function parameter

@@ -6,7 +6,6 @@ use crate::{
 #[derive(Debug)]
 pub(crate) struct Project {
     pub dir: PathBuf,
-    pub source_dir: PathBuf,
     pub target_dir: PathBuf,
     pub name: String,
     pub should_update: bool,
@@ -83,7 +82,6 @@ impl Project {
 
         let mut project = Project {
             dir: project_dir.into_std_path_buf(),
-            source_dir,
             target_dir: target_directory.into_std_path_buf(),
             name: project_name,
             should_update: util::env::should_update()?,
