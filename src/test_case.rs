@@ -66,7 +66,10 @@ impl TestFile {
             match TestCase::from_lines(file_stem, start, &mut lines, test_case_index) {
                 Ok(test_case) => test_cases.push(test_case),
                 Err((line_number, e)) => {
-                    let error = Error::TestCaseParse(path.clone(), line_number, e);
+                    let error = anyhow::anyhow!(
+                        "Failed to parse test case from {}:{line_number}: {e}",
+                        path.display(),
+                    );
                     return Self::from_error(path, relative_path, error);
                 }
             }

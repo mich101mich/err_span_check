@@ -7,6 +7,9 @@ pub fn should_update() -> Result<bool> {
 
     match var.as_os_str().to_str() {
         Some("overwrite") => Ok(true),
-        _ => Err(Error::UpdateVar(var.to_string_lossy().into_owned())),
+        _ => anyhow::bail!(
+            "unrecognized value of ERR_SPAN_CHECK: {:?}",
+            var.to_string_lossy()
+        ),
     }
 }

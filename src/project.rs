@@ -115,7 +115,7 @@ impl Project {
                 .workspace
                 .package
                 .edition
-                .ok_or(Error::NoWorkspaceManifest)?,
+                .context("Cargo.toml uses edition.workspace=true, but no edition found in workspace's manifest")?,
         };
 
         let mut dependencies = BTreeMap::new();

@@ -7,12 +7,12 @@ use serde::de::{
 
 pub(crate) fn get_manifest(manifest_dir: &Path) -> Result<Manifest> {
     let cargo_toml_path = manifest_dir.join("Cargo.toml");
-    let mut manifest = (|| {
-        let manifest_str = std::fs::read_to_string(&cargo_toml_path)?;
-        let manifest: Manifest = toml::from_str(&manifest_str)?;
-        Ok(manifest)
-    })()
-    .map_err(|err| Error::GetManifest(cargo_toml_path, Box::new(err)))?;
+
+    let manifest_str = std::fs::read_to_string(&cargo_toml_path)
+        .with_context(|| format!("failed to read manifest {}", cargo_toml_path.display()))?;
+
+    let mut manifest: Manifest = toml::from_str(&manifest_str)
+        .with_context(|| format!("failed to parse manifest {}", cargo_toml_path.display()))?;
 
     fix_dependencies(&mut manifest.dependencies, manifest_dir);
     fix_dependencies(&mut manifest.dev_dependencies, manifest_dir);

@@ -6,7 +6,10 @@ pub(crate) fn run() -> Result<()> {
     if !fail_dir.is_dir() {
         // We could say "no tests found" here, but the user explicitly called this function, so they want to run tests.
         // If the directory is missing, it probably means they set up their project incorrectly.
-        return Err(Error::NoFailDir(base_dir));
+        bail!(
+            "could not find or access tests/fail directory relative to {}",
+            base_dir.display()
+        );
     }
 
     let mut test_files = vec![];
@@ -43,8 +46,10 @@ pub(crate) fn run() -> Result<()> {
             let stem = format!("{}_{}", stem, count);
             TestFile::from_file(path, relative_path, &stem)
         } else {
-            let error = Error::InvalidFilename(path.clone());
-            TestFile::from_error(path, relative_path, error)
+            bail!(
+                r#"Invalid filename: {path:?}. Expected "<valid-nonempty-utf8>.rs"
+Note that the tests/fail directory is only allowed to contain compile-fail test files."#
+            )
         };
         test_files.push(file);
     }

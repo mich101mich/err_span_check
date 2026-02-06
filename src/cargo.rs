@@ -44,7 +44,7 @@ pub(crate) fn manifest_dir() -> Result<PathBuf> {
             return Ok(dir.to_path_buf());
         }
     }
-    Err(Error::ProjectDir)
+    bail!("failed to determine name of project dir")
 }
 
 pub(crate) fn build_dependencies(project: &mut Project) -> Result<()> {
@@ -72,9 +72,9 @@ pub(crate) fn build_dependencies(project: &mut Project) -> Result<()> {
         .arg(&project.name)
         .args(features(project));
 
-    let status = command.status().map_err(Error::Cargo)?;
+    let status = command.status().context("failed to execute cargo")?;
     if !status.success() {
-        return Err(Error::CargoFail);
+        bail!("cargo reported an error")
     }
 
     Ok(())
@@ -91,8 +91,8 @@ pub(crate) fn check_tests(project: &Project) -> Result<HashMap<PathBuf, Vec<Diag
         .arg("--message-format=json")
         .arg("--keep-going")
         .output()
+        .context("failed to execute cargo")
         .map(|out| parse_cargo_json(&out.stdout))
-        .map_err(Error::Cargo)
 }
 
 pub(crate) fn metadata() -> Result<cargo_metadata::Metadata> {

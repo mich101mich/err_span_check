@@ -217,7 +217,6 @@
 mod message;
 
 mod cargo;
-mod error;
 mod manifest;
 mod normalize;
 mod project;
@@ -229,10 +228,10 @@ mod util {
     pub(crate) mod features;
 }
 
-pub(crate) use error::{Error, Result};
 pub(crate) use project::Project;
 pub(crate) use test_case::TestFile;
 
+pub(crate) use anyhow::{Context, Error, Result, bail};
 pub(crate) use serde::{Deserialize, Serialize, de::Deserializer, ser::Serializer};
 
 pub(crate) use std::{
