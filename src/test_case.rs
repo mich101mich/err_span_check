@@ -33,8 +33,8 @@ pub(crate) struct TestCase {
     pub expected: String,
     /// The source code of this test case, without any error annotations.
     pub source_code: String,
-    /// The source code lines as a vector of (byte offset in file, line content).
-    pub source_code_lines: Vec<(usize, String)>,
+    /// The source code lines as a vector.
+    pub source_code_lines: Vec<String>,
 }
 
 impl TestFile {
@@ -123,7 +123,6 @@ Got: {start_line}"#
 
         let mut source_code = String::new();
         let mut source_code_lines = vec![];
-        let mut byte_offset = 0;
         for (_, line) in lines.by_ref() {
             writeln!(expected, "{line}").unwrap();
 
@@ -132,10 +131,11 @@ Got: {start_line}"#
                 break;
             }
 
+            // TODO: figure out if we are in a string..?
+
             if !line.trim_start().starts_with(INLINE_MARKER) {
                 writeln!(source_code, "{line}").unwrap();
-                source_code_lines.push((byte_offset, line.to_string()));
-                byte_offset += line.len() + 1; // +1 for newline
+                source_code_lines.push(line.to_string());
             }
         }
 
@@ -173,7 +173,7 @@ Got: {start_line}"#
 
         let mut actual = String::new();
         writeln!(actual, "{}", &self.header_line).unwrap();
-        for ((_, line), annotation) in self.source_code_lines.iter().zip(&mut annotations) {
+        for (line, annotation) in self.source_code_lines.iter().zip(&mut annotations) {
             writeln!(actual, "{line}").unwrap();
 
             // By default, errors are emitted left to right. However, that would look worse as an annotations:
@@ -228,7 +228,7 @@ Got: {start_line}"#
 
         let line = primary.line_start - 1; // zero-based line number
 
-        let (byte_offset, source_line) = self.source_code_lines.get(line)?;
+        let source_line = self.source_code_lines.get(line)?;
 
         // Prefix: "    //~"
         let mut prefix = source_line
@@ -237,10 +237,20 @@ Got: {start_line}"#
             .collect::<String>();
         prefix += INLINE_MARKER;
 
-        let spaces = (primary.byte_start as usize).checked_sub(byte_offset + prefix.len())?;
+        let mut chars = source_line.chars();
 
-        // empty spans (.start() or .end()) are indicated with at least one caret
-        let carets = (primary.byte_end - primary.byte_start).max(1) as usize;
+        let start = chars
+            .by_ref()
+            .take(primary.column_start - 1)
+            .collect::<String>();
+        let start_len = unicode_width::UnicodeWidthStr::width(start.as_str());
+        let spaces = start_len.checked_sub(prefix.len())?;
+
+        let underlined = chars
+            .take(primary.column_end - primary.column_start)
+            .collect::<String>();
+        let underlined_len = unicode_width::UnicodeWidthStr::width(underlined.as_str());
+        let carets = underlined_len.max(1); // empty spans (.start() or .end()) are indicated with at least one caret
 
         // First line prefix: "    //~    ^^^^^^^^ "
         let caret_line = format!("{prefix}{E: <spaces$}{E:^<carets$} ");
