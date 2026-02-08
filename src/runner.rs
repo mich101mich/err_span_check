@@ -139,6 +139,10 @@ Note that the tests/fail directory is only allowed to contain compile-fail test 
 
         let mut new_file_content = String::new();
         for test in &file.test_cases {
+            if !new_file_content.is_empty() {
+                new_file_content.push('\n');
+            }
+
             message::begin_test(
                 &test.display_name,
                 &file.relative_path,

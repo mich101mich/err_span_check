@@ -9,9 +9,22 @@ Error Span Checker
 A test harness for checking and comparing compiler errors with a focus on error spans. Useful mainly for procedural
 macros, but can also be used in other contexts.
 
-This crate is a fork of [err_span_check] with inline and in-file error message syntax rather than separate `.stderr` files. Passing tests have been removed for simplicity.
+This crate is a fork of [trybuild] with inline and in-file error message syntax rather than separate `.stderr` files. Passing tests have been removed for simplicity.
 
-[err_span_check]: https://crates.io/crates/err_span_check
+[trybuild]: https://crates.io/crates/trybuild
+
+TODO: Things to talk about:
+- Update by default, "frozen" for CI
+- requires git
+- file format
+  - contain arbitrary code
+  - at least 5 `/////` start a test case, text to give name
+  - Line with at least 10 `//////////` and nothing else to end test case
+  - test blocks are removed for other tests
+- produces error annotations (not written by hand!)
+  - `//////////////////// errors ////////////////////` to start external errors
+  - `//~` marks an inline spanned message
+    - line will be removed from actual test, so might appear in an invalid place
 
 
 

@@ -72,6 +72,8 @@ impl Normalizer {
 
         normalized = unindent(normalized);
 
+        normalized.truncate(normalized.trim_end().len());
+
         trim(normalized)
     }
 }

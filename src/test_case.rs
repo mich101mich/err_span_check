@@ -1,6 +1,6 @@
 use super::{normalize::Normalizer, *};
 
-use std::fmt::Write;
+use std::{fmt::Write, iter::Peekable};
 
 use cargo_metadata::diagnostic::Diagnostic;
 
@@ -28,13 +28,15 @@ pub(crate) struct TestCase {
     /// Line number in TestFile where this test case originates.
     pub start_line_number: usize,
     /// The header line of this test case.
-    pub header_line: String,
+    header_line: String,
+    /// Flag if the test case had a BLOCK_SEPARATOR at the end or if it flows into the next test case / end of file.
+    has_end_separator: bool,
     /// The expected output for this test case.
     pub expected: String,
     /// The source code of this test case, without any error annotations.
     pub source_code: String,
     /// The source code lines as a vector.
-    pub source_code_lines: Vec<String>,
+    source_code_lines: Vec<String>,
 }
 
 impl TestFile {
@@ -85,9 +87,20 @@ impl TestFile {
     }
 }
 
-const HEADER_INDICATOR: &str = "/////";
+/// Indicator used to mark a break. Can be: Start of a test case, ERRORS_HEADER, or BLOCK_SEPARATOR.
+const META_INDICATOR: &str = "/////";
+const ERRORS_HEADER: &str = "//////////////////// errors ////////////////////";
 const BLOCK_SEPARATOR: &str =
     "////////////////////////////////////////////////////////////////////////////////";
+
+/// Takes lines from the input iterator until it encounters a META_INDICATOR, without consuming the META_INDICATOR line.
+fn take_content_block<'a, 'input: 'a, I: Iterator<Item = (usize, &'input str)>>(
+    lines: &'a mut Peekable<I>,
+) -> impl Iterator<Item = (usize, &'input str)> + 'a {
+    let iter = lines.by_ref();
+    std::iter::from_fn(move || iter.next_if(|(_, line)| !line.starts_with(META_INDICATOR)))
+}
+
 const INLINE_MARKER: &str = "//~";
 const E: &str = ""; // print n repetitions of a character by printing an empty string with padding
 
@@ -95,17 +108,17 @@ impl TestCase {
     pub fn from_lines<'a, I>(
         file_stem: &str,
         (start_line_number, start_line): (usize, &'a str),
-        lines: &mut std::iter::Peekable<I>,
+        lines: &mut Peekable<I>,
         test_case_index: usize,
     ) -> std::result::Result<Self, (usize, String)>
     where
         I: Iterator<Item = (usize, &'a str)>,
     {
-        if !start_line.starts_with(HEADER_INDICATOR) {
+        if !start_line.starts_with(META_INDICATOR) {
             // TODO: add support for setup code
             let msg = format!(
                 r#"Invalid test case start line.
-Test cases have a header line that starts with at least "{HEADER_INDICATOR}".
+Test cases have a header line that starts with at least "{META_INDICATOR}".
 Got: {start_line}"#
             );
             return Err((start_line_number, msg));
@@ -123,15 +136,10 @@ Got: {start_line}"#
 
         let mut source_code = String::new();
         let mut source_code_lines = vec![];
-        for (_, line) in lines.by_ref() {
+
+        // parse source code
+        for (_, line) in take_content_block(lines) {
             writeln!(expected, "{line}").unwrap();
-
-            if line.starts_with(HEADER_INDICATOR) {
-                // start of remaining error block
-                break;
-            }
-
-            // TODO: figure out if we are in a string..?
 
             if !line.trim_start().starts_with(INLINE_MARKER) {
                 writeln!(source_code, "{line}").unwrap();
@@ -139,11 +147,28 @@ Got: {start_line}"#
             }
         }
 
-        while let Some((_, line)) = lines.next_if(|(_, line)| !line.starts_with(HEADER_INDICATOR)) {
-            writeln!(expected, "{line}").unwrap();
+        if let Some((_, header)) = lines.next_if(|(_, l)| *l == ERRORS_HEADER) {
+            writeln!(expected, "{header}").unwrap();
+
+            for (_, line) in take_content_block(lines) {
+                writeln!(expected, "{line}").unwrap();
+            }
         }
 
-        // Generate stable identifier based on file stem and test number
+        let has_end_separator;
+        if let Some((_, separator)) = lines.next_if(|(_, l)| *l == BLOCK_SEPARATOR) {
+            has_end_separator = true;
+
+            writeln!(expected, "{separator}").unwrap();
+        } else {
+            has_end_separator = false;
+        };
+
+        // Normalize the number of trailing newlines
+        expected.truncate(expected.trim_end().len());
+        writeln!(expected).unwrap();
+
+        // Generate semi-stable identifier based on file stem and test number
         let filename = format!("{}_{}.rs", file_stem, test_case_index);
 
         Ok(TestCase {
@@ -151,6 +176,7 @@ Got: {start_line}"#
             display_name,
             start_line_number,
             header_line: start_line.to_owned(),
+            has_end_separator,
             expected,
             source_code,
             source_code_lines,
@@ -160,14 +186,14 @@ Got: {start_line}"#
     pub(crate) fn annotate_with(&self, errors: &[Diagnostic], normalize: &Normalizer) -> String {
         let mut annotations = vec![vec![]; self.source_code_lines.len()];
 
-        let mut remaining_errors = String::new();
+        let mut remaining_errors = vec![];
         for error in errors {
             if let Some((line, annotation)) = self.to_annotation(error, normalize) {
                 annotations[line].push(annotation);
             } else {
                 let normalized =
                     normalize.diagnostics(error.rendered.as_deref().unwrap_or_default());
-                writeln!(remaining_errors, "{normalized}").unwrap();
+                remaining_errors.push(normalized);
             }
         }
 
@@ -176,40 +202,48 @@ Got: {start_line}"#
         for (line, annotation) in self.source_code_lines.iter().zip(&mut annotations) {
             writeln!(actual, "{line}").unwrap();
 
-            // By default, errors are emitted left to right. However, that would look worse as an annotations:
+            // By default, errors are emitted left to right:
             //
             // my_fn(some_wrong_arg, some_other_wrong_arg);
             // //~   ^^^^^^^^^^^^^^ this is text of the first error message
             // //~                   ^^^^^^^^^^^^^^^^^^^^ this is text of the second error message
             //
-            // vs
+            // However, this looks like the carets of the second error are pointing to the text of the first error, not
+            // the code. To avoid this confusion, we sort the annotations by descending starting byte offset:
             //
             // my_fn(some_wrong_arg, some_other_wrong_arg);
             // //~                   ^^^^^^^^^^^^^^^^^^^^ this is text of the second error message
             // //~   ^^^^^^^^^^^^^^ this is text of the first error message
-            //
-            // In the default case, the carets are only pointing at the error message, not the code.
-            // => Sort by descending starting byte offset.
             annotation.sort_by_key(|(byte_start, _)| std::cmp::Reverse(*byte_start));
             for (_, inline) in annotation {
                 writeln!(actual, "{inline}").unwrap();
             }
         }
 
-        if !actual.ends_with("\n\n") {
-            // make sure there's a blank line before the separator
+        if !remaining_errors.is_empty() {
+            writeln!(actual, "{ERRORS_HEADER}").unwrap();
             writeln!(actual).unwrap();
-        }
-        writeln!(actual, "{BLOCK_SEPARATOR}").unwrap();
 
-        // Append remaining errors as comments
-        for line in remaining_errors.lines() {
-            if line.trim().is_empty() {
-                writeln!(actual, "//").unwrap();
-            } else {
-                writeln!(actual, "// {line}").unwrap();
+            // Append remaining errors as comments
+            for error in &remaining_errors {
+                for line in error.lines() {
+                    if line.trim().is_empty() {
+                        writeln!(actual, "//").unwrap(); // no space after slashes
+                    } else {
+                        writeln!(actual, "// {line}").unwrap();
+                    }
+                }
+                writeln!(actual).unwrap();
             }
         }
+
+        if self.has_end_separator {
+            writeln!(actual, "{BLOCK_SEPARATOR}").unwrap();
+        }
+
+        // Normalize the number of trailing newlines
+        actual.truncate(actual.trim_end().len());
+        writeln!(actual).unwrap();
 
         actual
     }
