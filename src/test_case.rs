@@ -14,6 +14,8 @@ pub(crate) struct TestFile {
     pub original_content: String,
     /// The test cases contained in this test file.
     pub test_cases: Vec<TestCase>,
+    /// The git status of this file. Ok(()) means clean, errors are self-explanatory.
+    pub status: Result<()>,
     /// If an error occurred while processing this test file, it is stored here.
     /// This allows us to continue processing other test files.
     pub error: Option<Error>,
@@ -46,11 +48,17 @@ impl TestFile {
             relative_path,
             original_content: String::new(),
             test_cases: vec![],
+            status: Ok(()),
             error: Some(error),
         }
     }
 
-    pub fn from_file(path: PathBuf, relative_path: PathBuf, file_stem: &str) -> Self {
+    pub fn from_file(
+        path: PathBuf,
+        relative_path: PathBuf,
+        file_stem: &str,
+        repo: &git::GitRepo,
+    ) -> Self {
         let original_content = match std::fs::read_to_string(&path) {
             Ok(original_content) => original_content,
             Err(e) => return Self::from_error(path, relative_path, e.into()),
@@ -77,11 +85,14 @@ impl TestFile {
             }
         }
 
+        let status = repo.is_clean(&path);
+
         TestFile {
             path,
             relative_path,
             original_content,
             test_cases,
+            status,
             error: None,
         }
     }

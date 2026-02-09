@@ -217,6 +217,7 @@
 mod message;
 
 mod cargo;
+mod git;
 mod manifest;
 mod normalize;
 mod project;

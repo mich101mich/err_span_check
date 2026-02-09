@@ -54,3 +54,17 @@ pub(crate) fn updated(path: &Path) {
     println_col!(BoldRed => "mismatch");
     println_col!(Yellow => "Test at {} will be updated to match actual output.", path.display());
 }
+
+pub(crate) fn print_summary(
+    passed: usize,
+    failed: usize,
+    filtered: usize,
+    time: std::time::Duration,
+) {
+    print_col!("err_span_check result: ");
+    print_col!(Green => "ok");
+    println_col!(
+        ". {passed} passed; {failed} failed; {filtered} filtered out; finished in {time:.2?}"
+    );
+    println_col!();
+}

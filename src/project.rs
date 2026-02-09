@@ -56,7 +56,7 @@ impl Project {
             .join("tests")
             .join("err_span_check")
             .join(crate_name);
-        std::fs::create_dir_all(&project_dir)?;
+        std::fs::create_dir_all(&project_dir).context("failed to create project directory")?;
 
         let project_name = format!("{}-tests", crate_name);
         let manifest = Self::make_manifest(
@@ -71,14 +71,16 @@ impl Project {
             enabled_features.retain(|feature| manifest.features.contains_key(feature));
         }
 
-        let manifest_toml = toml::to_string(&manifest)?;
-        std::fs::write(project_dir.join("Cargo.toml"), manifest_toml)?;
+        let manifest_toml =
+            toml::to_string(&manifest).context("failed to serialize manifest to TOML")?;
+        std::fs::write(project_dir.join("Cargo.toml"), manifest_toml)
+            .context("failed to write Cargo.toml")?;
 
         let main_rs = b"\
             #![allow(unused_crate_dependencies, missing_docs)]\n\
             fn main() {}\n\
         ";
-        std::fs::write(project_dir.join("main.rs"), main_rs)?;
+        std::fs::write(project_dir.join("main.rs"), main_rs).context("failed to write main.rs")?;
 
         let mut project = Project {
             dir: project_dir.into_std_path_buf(),

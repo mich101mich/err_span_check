@@ -39,7 +39,8 @@ pub(crate) fn manifest_dir() -> Result<PathBuf> {
     if let Some(manifest_dir) = std::env::var_os("CARGO_MANIFEST_DIR") {
         return Ok(PathBuf::from(manifest_dir));
     }
-    for dir in std::env::current_dir()?.ancestors() {
+    let current_dir = std::env::current_dir().context("failed to get current directory")?;
+    for dir in current_dir.ancestors() {
         if dir.join("Cargo.toml").exists() {
             return Ok(dir.to_path_buf());
         }
@@ -99,7 +100,7 @@ pub(crate) fn metadata() -> Result<cargo_metadata::Metadata> {
     cargo_metadata::MetadataCommand::new()
         .no_deps()
         .exec()
-        .map_err(Into::into)
+        .context("failed to get cargo metadata")
 }
 
 fn features(project: &Project) -> Vec<String> {

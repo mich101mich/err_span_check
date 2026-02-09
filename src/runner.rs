@@ -1,6 +1,8 @@
 use crate::*;
 
 pub(crate) fn run() -> Result<()> {
+    let start_time = std::time::Instant::now();
+
     let base_dir = cargo::manifest_dir()?;
     let fail_dir = base_dir.join("tests").join("fail");
     if !fail_dir.is_dir() {
@@ -35,40 +37,41 @@ pub(crate) fn run() -> Result<()> {
             }
         });
 
+    let repo = git::GitRepo::open(&fail_dir)?;
+
     let mut unique_files = HashMap::new();
 
     for entry in file_iter {
-        let entry = entry?;
+        let entry = entry.context("failed to read directory entry")?;
         if !entry.file_type().is_file() {
             continue;
         }
         let path = entry.into_path();
-        let parsed_name = path
+        let stem = path
             .file_name()
             .and_then(|s| s.to_str())
-            .and_then(|f| f.rsplit_once('.'))
-            .filter(|(stem, ext)| !stem.is_empty() && *ext == "rs")
-            .map(|(stem, _)| stem.to_owned());
+            .and_then(|f| f.strip_suffix(".rs"))
+            .filter(|stem| !stem.is_empty())
+            .with_context(|| {
+                format!(
+                    r#"Invalid filename: {path:?}. Expected "<valid-nonempty-utf8>.rs"
+Note that the tests/fail directory is only allowed to contain compile-fail test files."#
+                )
+            })?
+            .to_owned();
 
-        // TODO: check git status
+        // Ensure unique filenames by appending a counter
+        let count = unique_files.entry(stem.clone()).or_insert(0);
+        *count += 1;
+        let stem = format!("{}_{}", stem, count);
 
         let relative_path = path
             .strip_prefix(&fail_dir)
             .map(ToOwned::to_owned)
             .unwrap_or(path.clone());
 
-        let file = if let Some(stem) = parsed_name {
-            // Ensure unique filenames by appending a counter
-            let count = unique_files.entry(stem.clone()).or_insert(0);
-            *count += 1;
-            let stem = format!("{}_{}", stem, count);
-            TestFile::from_file(path, relative_path, &stem)
-        } else {
-            bail!(
-                r#"Invalid filename: {path:?}. Expected "<valid-nonempty-utf8>.rs"
-Note that the tests/fail directory is only allowed to contain compile-fail test files."#
-            )
-        };
+        let file = TestFile::from_file(path, relative_path, &stem, &repo);
+
         test_files.push(file);
     }
 
@@ -77,7 +80,9 @@ Note that the tests/fail directory is only allowed to contain compile-fail test 
         return Ok(());
     }
 
+    let original_count = test_files.len();
     filter(&mut test_files);
+    let filtered = original_count - test_files.len();
 
     if test_files.is_empty() {
         message::no_tests_enabled();
@@ -89,7 +94,7 @@ Note that the tests/fail directory is only allowed to contain compile-fail test 
     print_col!("\n\n");
 
     let tests_dir = project.dir.join("tests");
-    std::fs::create_dir_all(&tests_dir)?;
+    std::fs::create_dir_all(&tests_dir).context("failed to create tests directory")?;
 
     let mut active_test_files = HashSet::new();
 
@@ -104,7 +109,8 @@ Note that the tests/fail directory is only allowed to contain compile-fail test 
             // Only write if content has changed
             let current_content = std::fs::read(&test_file_path).ok();
             if current_content.as_deref() != Some(test.source_code.as_bytes()) {
-                std::fs::write(&test_file_path, &test.source_code)?;
+                std::fs::write(&test_file_path, &test.source_code)
+                    .context("failed to write test file")?;
             }
 
             active_test_files.insert(test.filename.clone());
@@ -120,7 +126,7 @@ Note that the tests/fail directory is only allowed to contain compile-fail test 
         if let Some(filename) = entry.file_name().to_str()
             && !active_test_files.contains(filename)
         {
-            std::fs::remove_file(entry.path())?;
+            std::fs::remove_file(entry.path()).ok();
         }
     }
 
@@ -129,11 +135,19 @@ Note that the tests/fail directory is only allowed to contain compile-fail test 
     let mut total = 0;
     let mut failed = 0;
     for file in test_files {
-        if file.error.is_some() {
+        if let Some(error) = file.error {
             total += 1;
             failed += 1;
             message::begin_test("err_span_check file parse", &file.relative_path, 0);
-            message::fail(file.error.unwrap());
+            message::fail(error);
+            continue;
+        } else if let Err(error) = file.status {
+            // We refuse to even run tests on files that have unstaged changes to make tests deterministic.
+            // Otherwise, they would succeed after one run due to updating.
+            total += 1;
+            failed += 1;
+            message::begin_test("git status is clean", &file.relative_path, 0);
+            message::fail(error);
             continue;
         }
 
@@ -179,13 +193,21 @@ Note that the tests/fail directory is only allowed to contain compile-fail test 
         }
 
         if project.should_update && new_file_content != file.original_content {
-            std::fs::write(&file.path, new_file_content)?;
+            std::fs::write(&file.path, new_file_content).with_context(|| {
+                format!(
+                    "Failed to write updated test file: {}",
+                    file.relative_path.display()
+                )
+            })?;
         }
     }
 
     print_col!("\n\n");
 
-    if failed > 0 {
+    if failed == 0 {
+        let duration = start_time.elapsed();
+        message::print_summary(total - failed, failed, filtered, duration);
+    } else {
         panic!("{failed} of {total} tests failed");
     }
 
