@@ -10,6 +10,8 @@ pub(crate) struct TestCase {
     pub display_name: String,
     /// The filename to use for this test case when writing it to disk.
     pub filename: String,
+    /// How cargo will refer to this test case. The filename without the .rs.
+    pub test_name: String,
     /// Line number in TestFile where this test case originates.
     pub start_line_number: usize,
     /// The header line of this test case.
@@ -109,10 +111,12 @@ Got: {start_line}"#
         writeln!(expected).unwrap();
 
         // Generate semi-stable identifier based on file stem and test number
-        let filename = format!("{}_{}.rs", file_stem, test_case_index);
+        let test_name = format!("{}_{}", file_stem, test_case_index);
+        let filename = format!("{test_name}.rs");
 
         Ok(TestCase {
             filename,
+            test_name,
             display_name,
             start_line_number,
             header_line: start_line.to_owned(),

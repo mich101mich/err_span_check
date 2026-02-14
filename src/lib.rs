@@ -226,11 +226,13 @@ mod runner;
 mod rustflags;
 mod util {
     pub(crate) mod env;
+    pub(crate) mod extensions;
     pub(crate) mod features;
 }
 
 pub(crate) use fail_dir::TestFile;
 pub(crate) use project::Project;
+pub(crate) use util::extensions::*;
 
 pub(crate) use anyhow::{Context, Error, Result, bail};
 pub(crate) use serde::{Deserialize, Serialize, de::Deserializer, ser::Serializer};

@@ -81,11 +81,18 @@ pub(crate) fn build_dependencies(project: &mut Project) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn check_tests(project: &Project) -> Result<HashMap<PathBuf, Vec<Diagnostic>>> {
-    cargo(project)
-        .arg("check")
-        .arg("--tests")
-        .args(features(project))
+pub(crate) fn check_tests(
+    project: &Project,
+    tests: &[&str],
+) -> Result<HashMap<PathBuf, Vec<Diagnostic>>> {
+    let mut cmd = cargo(project);
+    cmd.arg("check");
+
+    for test in tests {
+        cmd.arg("--test").arg(test);
+    }
+
+    cmd.args(features(project))
         .args(target())
         .arg("--quiet")
         .arg("--color=never")

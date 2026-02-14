@@ -28,7 +28,7 @@ pub(crate) fn run() -> Result<()> {
     let tests_dir = project.dir.join("tests");
     std::fs::create_dir_all(&tests_dir).context("failed to create tests directory")?;
 
-    let mut active_test_files = HashSet::new();
+    let mut active_test_files = vec![];
 
     for file in &test_files {
         if file.error.is_some() {
@@ -45,24 +45,11 @@ pub(crate) fn run() -> Result<()> {
                     .context("failed to write test file")?;
             }
 
-            active_test_files.insert(test.filename.clone());
+            active_test_files.push(test.test_name.as_str());
         }
     }
 
-    // Clean up test files that are no longer in the input set
-    for entry in walkdir::WalkDir::new(&tests_dir).min_depth(1).max_depth(1) {
-        let Ok(entry) = entry else { continue };
-        if !entry.file_type().is_file() {
-            continue;
-        }
-        if let Some(filename) = entry.file_name().to_str()
-            && !active_test_files.contains(filename)
-        {
-            std::fs::remove_file(entry.path()).ok();
-        }
-    }
-
-    let mut output = cargo::check_tests(&project)?;
+    let mut output = cargo::check_tests(&project, &active_test_files)?;
 
     let mut total = 0;
     let mut failed = 0;
@@ -125,12 +112,7 @@ pub(crate) fn run() -> Result<()> {
         }
 
         if project.should_update && new_file_content != file.original_content {
-            std::fs::write(&file.path, new_file_content).with_context(|| {
-                format!(
-                    "Failed to write updated test file: {}",
-                    file.relative_path.display()
-                )
-            })?;
+            file.write(new_file_content)?;
         }
     }
 

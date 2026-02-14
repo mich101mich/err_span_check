@@ -31,4 +31,3 @@ target-triple = "1.0"
 termcolor = "1.0.4"
 toml = "0.9.8"
 unicode-width = { version = "0.2.2", default-features = false }
-walkdir = "2.5.0"

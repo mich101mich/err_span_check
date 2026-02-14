@@ -9,10 +9,10 @@ pub(crate) fn get_manifest(manifest_dir: &Path) -> Result<Manifest> {
     let cargo_toml_path = manifest_dir.join("Cargo.toml");
 
     let manifest_str = std::fs::read_to_string(&cargo_toml_path)
-        .with_context(|| format!("failed to read manifest {}", cargo_toml_path.display()))?;
+        .path_context(&cargo_toml_path, "failed to read manifest: <path>")?;
 
     let mut manifest: Manifest = toml::from_str(&manifest_str)
-        .with_context(|| format!("failed to parse manifest {}", cargo_toml_path.display()))?;
+        .path_context(&cargo_toml_path, "failed to parse manifest: <path>")?;
 
     fix_dependencies(&mut manifest.dependencies, manifest_dir);
     fix_dependencies(&mut manifest.dev_dependencies, manifest_dir);
