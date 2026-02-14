@@ -1,25 +1,8 @@
-use super::{normalize::Normalizer, *};
+use super::*;
 
 use std::{fmt::Write, iter::Peekable};
 
 use cargo_metadata::diagnostic::Diagnostic;
-
-#[derive(Debug)]
-pub(crate) struct TestFile {
-    /// The absolute path to this test file.
-    pub path: PathBuf,
-    /// The relative path to this test file from the base directory.
-    pub relative_path: PathBuf,
-    /// The original content of this test file.
-    pub original_content: String,
-    /// The test cases contained in this test file.
-    pub test_cases: Vec<TestCase>,
-    /// The git status of this file. Ok(()) means clean, errors are self-explanatory.
-    pub status: Result<()>,
-    /// If an error occurred while processing this test file, it is stored here.
-    /// This allows us to continue processing other test files.
-    pub error: Option<Error>,
-}
 
 #[derive(Debug)]
 pub(crate) struct TestCase {
@@ -41,79 +24,25 @@ pub(crate) struct TestCase {
     source_code_lines: Vec<String>,
 }
 
-impl TestFile {
-    pub fn from_error(path: PathBuf, relative_path: PathBuf, error: Error) -> Self {
-        TestFile {
-            path,
-            relative_path,
-            original_content: String::new(),
-            test_cases: vec![],
-            status: Ok(()),
-            error: Some(error),
-        }
-    }
-
-    pub fn from_file(
-        path: PathBuf,
-        relative_path: PathBuf,
-        file_stem: &str,
-        repo: &git::GitRepo,
-    ) -> Self {
-        let original_content = match std::fs::read_to_string(&path) {
-            Ok(original_content) => original_content,
-            Err(e) => return Self::from_error(path, relative_path, e.into()),
-        };
-
-        let mut lines = original_content
-            .lines()
-            .enumerate()
-            .map(|(i, line)| (i + 1, line)) // line numbers start at 1
-            .peekable();
-
-        let mut test_cases = vec![];
-        while let Some(start) = lines.next() {
-            let test_case_index = test_cases.len();
-            match TestCase::from_lines(file_stem, start, &mut lines, test_case_index) {
-                Ok(test_case) => test_cases.push(test_case),
-                Err((line_number, e)) => {
-                    let error = anyhow::anyhow!(
-                        "Failed to parse test case from {}:{line_number}: {e}",
-                        path.display(),
-                    );
-                    return Self::from_error(path, relative_path, error);
-                }
-            }
-        }
-
-        let status = repo.is_clean(&path);
-
-        TestFile {
-            path,
-            relative_path,
-            original_content,
-            test_cases,
-            status,
-            error: None,
-        }
-    }
-}
-
 /// Indicator used to mark a break. Can be: Start of a test case, ERRORS_HEADER, or BLOCK_SEPARATOR.
-const META_INDICATOR: &str = "/////";
-const ERRORS_HEADER: &str = "//////////////////// errors ////////////////////";
-const BLOCK_SEPARATOR: &str =
+pub(crate) const META_INDICATOR: &str = "/////";
+
+pub(crate) const ERRORS_HEADER: &str = "//////////////////// errors ////////////////////";
+
+pub(crate) const BLOCK_SEPARATOR: &str =
     "////////////////////////////////////////////////////////////////////////////////";
 
 /// Takes lines from the input iterator until it encounters a META_INDICATOR, without consuming the META_INDICATOR line.
-fn take_content_block<'a, 'input: 'a, I: Iterator<Item = (usize, &'input str)>>(
+pub(crate) fn take_content_block<'a, 'input: 'a, I: Iterator<Item = (usize, &'input str)>>(
     lines: &'a mut Peekable<I>,
 ) -> impl Iterator<Item = (usize, &'input str)> + 'a {
     let iter = lines.by_ref();
     std::iter::from_fn(move || iter.next_if(|(_, line)| !line.starts_with(META_INDICATOR)))
 }
 
-const INLINE_MARKER: &str = "//~";
-const E: &str = ""; // print n repetitions of a character by printing an empty string with padding
+pub(crate) const INLINE_MARKER: &str = "//~";
+
+pub(crate) const E: &str = "";
 
 impl TestCase {
     pub fn from_lines<'a, I>(
@@ -194,7 +123,11 @@ Got: {start_line}"#
         })
     }
 
-    pub(crate) fn annotate_with(&self, errors: &[Diagnostic], normalize: &Normalizer) -> String {
+    pub(crate) fn annotate_with(
+        &self,
+        errors: &[Diagnostic],
+        normalize: &normalize::Normalizer,
+    ) -> String {
         let mut annotations = vec![vec![]; self.source_code_lines.len()];
 
         let mut remaining_errors = vec![];
@@ -260,10 +193,10 @@ Got: {start_line}"#
     }
 
     /// Tries to convert a compiler diagnostic message into an inline annotation
-    fn to_annotation(
+    pub(crate) fn to_annotation(
         &self,
         msg: &Diagnostic,
-        normalize: &Normalizer,
+        normalize: &normalize::Normalizer,
     ) -> Option<(usize, (u32, String))> {
         let primary = msg.spans.iter().find(|s| s.is_primary)?;
 
@@ -317,12 +250,12 @@ Got: {start_line}"#
             //     //~           label: label0
             //     //~                  label1
 
-            const MESSAGE_PREFIX: &str = "error: ";
+            pub(crate) const MESSAGE_PREFIX: &str = "error: ";
             let message_line = format!("{caret_line}{MESSAGE_PREFIX}");
             let message_indent = format!("{prefix}{E: <0$}", MESSAGE_PREFIX.len());
             write_indented(&mut out, &message_line, &message_indent, &message);
 
-            const LABEL_PREFIX: &str = "label: ";
+            pub(crate) const LABEL_PREFIX: &str = "label: ";
             let label_line = format!("{prefix}{LABEL_PREFIX}");
             let label_indent = format!("{prefix}{E: <0$}", LABEL_PREFIX.len());
             write_indented(&mut out, &label_line, &label_indent, &label);
@@ -342,7 +275,7 @@ Got: {start_line}"#
 }
 
 /// Write a string with different prefixes for the first line and the following lines
-fn write_indented(f: &mut String, first_line: &str, indentation: &str, text: &str) {
+pub(crate) fn write_indented(f: &mut String, first_line: &str, indentation: &str, text: &str) {
     let mut prefix = Some(first_line);
     for line in text.lines() {
         let prefix = prefix.take().unwrap_or(indentation);

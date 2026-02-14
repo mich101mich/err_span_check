@@ -217,20 +217,20 @@
 mod message;
 
 mod cargo;
+mod fail_dir;
 mod git;
 mod manifest;
 mod normalize;
 mod project;
 mod runner;
 mod rustflags;
-mod test_case;
 mod util {
     pub(crate) mod env;
     pub(crate) mod features;
 }
 
+pub(crate) use fail_dir::TestFile;
 pub(crate) use project::Project;
-pub(crate) use test_case::TestFile;
 
 pub(crate) use anyhow::{Context, Error, Result, bail};
 pub(crate) use serde::{Deserialize, Serialize, de::Deserializer, ser::Serializer};
