@@ -4,7 +4,7 @@ compile_error!("ERROR");
 //////////////////// errors ////////////////////
 
 // error: ERROR
-//  --> compile-fail-2.rs:1:1
+//  --> multiple-errors.rs:1:1
 //   |
 // 1 | compile_error!("ERROR");
 //   | ^^^^^^^^^^^^^^^^^^^^^^^
@@ -20,7 +20,7 @@ compile_error!("THIRD ERROR");
 //////////////////// errors ////////////////////
 
 // error: THIRD ERROR
-//  --> compile-fail-2.rs:1:1
+//  --> multiple-errors.rs:1:1
 //   |
 // 1 | compile_error!("THIRD ERROR");
 //   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

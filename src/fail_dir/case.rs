@@ -16,55 +16,55 @@ pub(crate) struct TestCase {
     pub start_line_number: usize,
     /// The header line of this test case.
     header_line: String,
-    /// Flag if the test case had a BLOCK_SEPARATOR at the end or if it flows into the next test case / end of file.
-    has_end_separator: bool,
+    /// Line containing a BLOCK_SEPARATOR from the end of the test case, if any.
+    end_separator: Option<String>,
     /// The expected output for this test case.
     pub expected: String,
     /// The source code of this test case, without any error annotations.
     pub source_code: String,
     /// The source code lines as a vector.
     source_code_lines: Vec<String>,
+    /// Number of lines of setup code before this test case
+    setup_code_prefix_length: usize,
 }
 
 /// Indicator used to mark a break. Can be: Start of a test case, ERRORS_HEADER, or BLOCK_SEPARATOR.
-pub(crate) const META_INDICATOR: &str = "/////";
+const META_INDICATOR: &str = "/////";
 
-pub(crate) const ERRORS_HEADER: &str = "//////////////////// errors ////////////////////";
+const ERRORS_HEADER: &str = "//////////////////// errors ////////////////////";
 
-pub(crate) const BLOCK_SEPARATOR: &str =
+const BLOCK_SEPARATOR: &str =
     "////////////////////////////////////////////////////////////////////////////////";
 
-/// Takes lines from the input iterator until it encounters a META_INDICATOR, without consuming the META_INDICATOR line.
-pub(crate) fn take_content_block<'a, 'input: 'a, I: Iterator<Item = (usize, &'input str)>>(
-    lines: &'a mut Peekable<I>,
-) -> impl Iterator<Item = (usize, &'input str)> + 'a {
-    let iter = lines.by_ref();
-    std::iter::from_fn(move || iter.next_if(|(_, line)| !line.starts_with(META_INDICATOR)))
-}
+const INLINE_MARKER: &str = "//~";
 
-pub(crate) const INLINE_MARKER: &str = "//~";
-
-pub(crate) const E: &str = "";
+const E: &str = "";
 
 impl TestCase {
-    pub fn from_lines<'a, I>(
+    /// Takes lines from the input iterator until it encounters a META_INDICATOR, without consuming the META_INDICATOR line.
+    pub(crate) fn take_until_meta<'a, 'input: 'a, I: Iterator<Item = (usize, &'input str)>>(
+        lines: &'a mut Peekable<I>,
+    ) -> impl Iterator<Item = (usize, &'input str)> + 'a {
+        let iter = lines.by_ref();
+        std::iter::from_fn(move || {
+            iter.next_if(|(_, line)| !line.trim_start().starts_with(META_INDICATOR))
+        })
+    }
+
+    pub(crate) fn from_lines<'a, I>(
         file_stem: &str,
-        (start_line_number, start_line): (usize, &'a str),
         lines: &mut Peekable<I>,
         test_case_index: usize,
+        setup_code_prefix: &[String],
     ) -> std::result::Result<Self, (usize, String)>
     where
         I: Iterator<Item = (usize, &'a str)>,
     {
-        if !start_line.starts_with(META_INDICATOR) {
-            // TODO: add support for setup code
-            let msg = format!(
-                r#"Invalid test case start line.
-Test cases have a header line that starts with at least "{META_INDICATOR}".
-Got: {start_line}"#
-            );
-            return Err((start_line_number, msg));
-        }
+        let (start_line_number, start_line) = lines.next().unwrap();
+        debug_assert!(
+            start_line.trim_start().starts_with(META_INDICATOR),
+            "logic error in err_span_check: TestCase::from_lines called with a non-meta line"
+        );
 
         let display_name = start_line.trim_matches(|c: char| c == '/' || c.is_whitespace());
         let display_name = if !display_name.is_empty() {
@@ -79,8 +79,13 @@ Got: {start_line}"#
         let mut source_code = String::new();
         let mut source_code_lines = vec![];
 
+        let setup_code_prefix_length = setup_code_prefix.len();
+        for line in setup_code_prefix {
+            writeln!(source_code, "{}", line).unwrap();
+        }
+
         // parse source code
-        for (_, line) in take_content_block(lines) {
+        for (_, line) in Self::take_until_meta(lines) {
             writeln!(expected, "{line}").unwrap();
 
             if !line.trim_start().starts_with(INLINE_MARKER) {
@@ -92,18 +97,15 @@ Got: {start_line}"#
         if let Some((_, header)) = lines.next_if(|(_, l)| *l == ERRORS_HEADER) {
             writeln!(expected, "{header}").unwrap();
 
-            for (_, line) in take_content_block(lines) {
+            for (_, line) in Self::take_until_meta(lines) {
                 writeln!(expected, "{line}").unwrap();
             }
         }
 
-        let has_end_separator;
-        if let Some((_, separator)) = lines.next_if(|(_, l)| *l == BLOCK_SEPARATOR) {
-            has_end_separator = true;
-
+        let mut end_separator = None;
+        if let Some((_, separator)) = lines.next_if(|(_, l)| l.trim() == BLOCK_SEPARATOR) {
+            end_separator = Some(separator.to_string());
             writeln!(expected, "{separator}").unwrap();
-        } else {
-            has_end_separator = false;
         };
 
         // Normalize the number of trailing newlines
@@ -120,11 +122,18 @@ Got: {start_line}"#
             display_name,
             start_line_number,
             header_line: start_line.to_owned(),
-            has_end_separator,
+            end_separator,
             expected,
             source_code,
             source_code_lines,
+            setup_code_prefix_length,
         })
+    }
+
+    pub(crate) fn add_suffix(&mut self, suffix: &[String]) {
+        for line in suffix {
+            writeln!(self.source_code, "{}", line).unwrap();
+        }
     }
 
     pub(crate) fn annotate_with(
@@ -185,8 +194,8 @@ Got: {start_line}"#
             }
         }
 
-        if self.has_end_separator {
-            writeln!(actual, "{BLOCK_SEPARATOR}").unwrap();
+        if let Some(separator) = &self.end_separator {
+            writeln!(actual, "{separator}").unwrap();
         }
 
         // Normalize the number of trailing newlines
@@ -197,7 +206,7 @@ Got: {start_line}"#
     }
 
     /// Tries to convert a compiler diagnostic message into an inline annotation
-    pub(crate) fn to_annotation(
+    fn to_annotation(
         &self,
         msg: &Diagnostic,
         normalize: &normalize::Normalizer,
@@ -208,7 +217,9 @@ Got: {start_line}"#
             return None; // Can't annotate multi-line spans inline
         }
 
-        let line = primary.line_start - 1; // zero-based line number
+        let line = primary
+            .line_start
+            .checked_sub(1 + self.setup_code_prefix_length)?; // zero-based line number
 
         let source_line = self.source_code_lines.get(line)?;
 
@@ -254,12 +265,12 @@ Got: {start_line}"#
             //     //~           label: label0
             //     //~                  label1
 
-            pub(crate) const MESSAGE_PREFIX: &str = "error: ";
+            const MESSAGE_PREFIX: &str = "error: ";
             let message_line = format!("{caret_line}{MESSAGE_PREFIX}");
             let message_indent = format!("{prefix}{E: <0$}", MESSAGE_PREFIX.len());
             write_indented(&mut out, &message_line, &message_indent, &message);
 
-            pub(crate) const LABEL_PREFIX: &str = "label: ";
+            const LABEL_PREFIX: &str = "label: ";
             let label_line = format!("{prefix}{LABEL_PREFIX}");
             let label_indent = format!("{prefix}{E: <0$}", LABEL_PREFIX.len());
             write_indented(&mut out, &label_line, &label_indent, &label);
@@ -279,7 +290,7 @@ Got: {start_line}"#
 }
 
 /// Write a string with different prefixes for the first line and the following lines
-pub(crate) fn write_indented(f: &mut String, first_line: &str, indentation: &str, text: &str) {
+fn write_indented(f: &mut String, first_line: &str, indentation: &str, text: &str) {
     let mut prefix = Some(first_line);
     for line in text.lines() {
         let prefix = prefix.take().unwrap_or(indentation);

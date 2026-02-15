@@ -35,17 +35,20 @@ pub(crate) fn run() -> Result<()> {
             continue;
         }
 
-        for test in &file.test_cases {
-            let test_file_path = tests_dir.join(&test.filename);
+        for block in &file.blocks {
+            let fail_dir::Block::TestCase { test_case, .. } = block else {
+                continue;
+            };
+            let test_file_path = tests_dir.join(&test_case.filename);
 
             // Only write if content has changed
             let current_content = std::fs::read(&test_file_path).ok();
-            if current_content.as_deref() != Some(test.source_code.as_bytes()) {
-                std::fs::write(&test_file_path, &test.source_code)
+            if current_content.as_deref() != Some(test_case.source_code.as_bytes()) {
+                std::fs::write(&test_file_path, &test_case.source_code)
                     .context("failed to write test file")?;
             }
 
-            active_test_files.push(test.test_name.as_str());
+            active_test_files.push(test_case.test_name.as_str());
         }
     }
 
@@ -71,10 +74,25 @@ pub(crate) fn run() -> Result<()> {
         }
 
         let mut new_file_content = String::new();
-        for test in &file.test_cases {
-            if !new_file_content.is_empty() {
+        let mut last_was_test_case = false;
+        for block in &file.blocks {
+            let test = match block {
+                fail_dir::Block::TestCase { test_case, .. } => test_case,
+                fail_dir::Block::Code(range) => {
+                    last_was_test_case = false;
+                    for line in &file.setup_code[range.clone()] {
+                        new_file_content.push_str(line);
+                        new_file_content.push('\n');
+                    }
+                    continue;
+                }
+            };
+
+            if last_was_test_case {
                 new_file_content.push('\n');
             }
+
+            last_was_test_case = true;
 
             message::begin_test(
                 &test.display_name,
