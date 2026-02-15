@@ -1,4 +1,5 @@
 const IGNORED_LINTS: &[&str] = &["dead_code"];
+const ALLOWED_FLAGS: &[&str] = &["instrument-coverage"];
 
 pub(crate) fn toml() -> toml::Value {
     let mut rustflags = vec!["--cfg", "err_span_check", "--verbose"];
@@ -8,11 +9,17 @@ pub(crate) fn toml() -> toml::Value {
         rustflags.push(lint);
     }
 
-    if let Some(flags) = std::env::var_os("RUSTFLAGS") {
-        // TODO: could parse this properly and allowlist or blocklist certain
-        // flags. This is good enough to at least support cargo-llvm-cov.
-        if flags.to_string_lossy().contains("-C instrument-coverage") {
-            rustflags.extend(["-C", "instrument-coverage"]);
+    let flags = std::env::var_os("RUSTFLAGS").map(|s| s.to_string_lossy().into_owned());
+    if let Some(flags) = flags.as_ref() {
+        let mut iter = flags.split_whitespace();
+        while let Some(option) = iter.next() {
+            if option == "-C"
+                && let Some(flag) = iter.next()
+                && ALLOWED_FLAGS.contains(&flag)
+            {
+                rustflags.push("-C");
+                rustflags.push(flag);
+            }
         }
     }
 
