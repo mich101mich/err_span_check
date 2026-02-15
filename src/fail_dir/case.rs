@@ -66,7 +66,9 @@ impl TestCase {
             "logic error in err_span_check: TestCase::from_lines called with a non-meta line"
         );
 
-        let display_name = start_line.trim_matches(|c: char| c == '/' || c.is_whitespace());
+        // trim the slashes and spaces. This has to be multi-step trimming to preserve intentional slashes.
+        // turn "    ///// my test ending with slash/ /////" into "my test ending with slash/"
+        let display_name = start_line.trim().trim_matches('/').trim();
         let display_name = if !display_name.is_empty() {
             display_name.to_owned()
         } else {
@@ -94,7 +96,7 @@ impl TestCase {
             }
         }
 
-        if let Some((_, header)) = lines.next_if(|(_, l)| *l == ERRORS_HEADER) {
+        if let Some((_, header)) = lines.next_if(|(_, l)| l.trim() == ERRORS_HEADER) {
             writeln!(expected, "{header}").unwrap();
 
             for (_, line) in Self::take_until_meta(lines) {
@@ -154,6 +156,12 @@ impl TestCase {
             }
         }
 
+        let indentation = self
+            .header_line
+            .chars()
+            .take_while(|c| c.is_whitespace())
+            .collect::<String>();
+
         let mut actual = String::new();
         writeln!(actual, "{}", &self.header_line).unwrap();
         for (line, annotation) in self.source_code_lines.iter().zip(&mut annotations) {
@@ -178,16 +186,16 @@ impl TestCase {
         }
 
         if !remaining_errors.is_empty() {
-            writeln!(actual, "{ERRORS_HEADER}").unwrap();
+            writeln!(actual, "{indentation}{ERRORS_HEADER}").unwrap();
             writeln!(actual).unwrap();
 
             // Append remaining errors as comments
             for error in &remaining_errors {
                 for line in error.lines() {
                     if line.trim().is_empty() {
-                        writeln!(actual, "//").unwrap(); // no space after slashes
+                        writeln!(actual, "{indentation}//").unwrap(); // no space after slashes
                     } else {
-                        writeln!(actual, "// {line}").unwrap();
+                        writeln!(actual, "{indentation}// {line}").unwrap();
                     }
                 }
                 writeln!(actual).unwrap();
