@@ -1,25 +1,45 @@
 Error Span Checker
 ========
 
-[<img alt="github" src="https://img.shields.io/badge/github-mich101mich/err_span_check-8da0cb?style=for-the-badge&labelColor=555555&logo=github" height="20">](https://github.com/mich101mich/err_span_check)
-[<img alt="crates.io" src="https://img.shields.io/crates/v/err_span_check.svg?style=for-the-badge&color=fc8d62&logo=rust" height="20">](https://crates.io/crates/err_span_check)
-[<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-err_span_check-66c2a5?style=for-the-badge&labelColor=555555&logo=docs.rs" height="20">](https://docs.rs/err_span_check)
-[<img alt="build status" src="https://img.shields.io/github/actions/workflow/status/mich101mich/err_span_check/ci.yml?branch=master&style=for-the-badge" height="20">](https://github.com/mich101mich/err_span_check/actions?query=branch%3Amaster)
+[![Tests](https://github.com/mich101mich/err_span_check/actions/workflows/test.yml/badge.svg)](https://github.com/mich101mich/err_span_check/actions/workflows/test.yml)
+[![Crates.io](https://img.shields.io/crates/v/err_span_check.svg)](https://crates.io/crates/err_span_check)
+[![Documentation](https://docs.rs/err_span_check/badge.svg)](https://docs.rs/err_span_check/)
+[![Dependency status](https://deps.rs/repo/github/mich101mich/err_span_check/status.svg)](https://deps.rs/repo/github/mich101mich/err_span_check)
 
 A test harness for checking and comparing compiler errors with a focus on error spans. Useful mainly for procedural
 macros, but can also be used in other contexts.
 
-This crate is a fork of [trybuild] with inline and in-file error message syntax rather than separate `.stderr` files. Passing tests have been removed for simplicity.
+This crate is a fork of [trybuild] with in-file error message syntax rather than separate `.stderr` files. It also has
+a more specialized and rigid workflow, so if any part of this process does not fit your project, please check out the
+more general-purpose [trybuild] instead.
 
 [trybuild]: https://crates.io/crates/trybuild
+
+## Goal
+
+The rust compiler produces some of the best error messages of any comparable tool in the industry. And when you create
+a [procedural macro], you are in a position where your errors are rendered as compiler errors. So as an author of
+a proc-macro, you might want to put extra effort into making your errors as helpful as possible.
+
+This can pose a serious challenge though, as proc-macro development is fairly niche and many of the required tools are
+still waiting for stabilization (see [1], [2]). One of the core challenges is settings [`Span`]s correctly, aka the
+region of the source code that is underlined by the error. This crate provides a simple way to verify that your
+macro underlines the correct part of the code with its errors.
+
+[procedural macro]: https://doc.rust-lang.org/stable/book/ch20-05-macros.html
+[1]: https://github.com/rust-lang/rust/issues/54725
+[2]: https://github.com/rust-lang/rust/issues/54140
+[`Span`]: https://doc.rust-lang.org/proc_macro/struct.Span.html
+
+## Workflow
 
 TODO: Things to talk about:
 - Update by default, "frozen" for CI
 - requires git
 - file format
   - contain arbitrary code
-  - at least 5 `/////` start a test case, text to give name
-  - Line with at least 10 `//////////` and nothing else to end test case
+  - at least 5 `/////` start a test case + text to name the case
+  - next test can start immediately, or have meta-line without text to end it
   - test blocks are removed for other tests
 - produces error annotations (not written by hand!)
   - `//~~~~~~~~~~~~~~~~~~~~ errors ~~~~~~~~~~~~~~~~~~~~//` to start external errors
