@@ -33,9 +33,6 @@ const META_INDICATOR: &str = "/////";
 
 const ERRORS_HEADER: &str = "//////////////////// errors ////////////////////";
 
-const BLOCK_SEPARATOR: &str =
-    "////////////////////////////////////////////////////////////////////////////////";
-
 const INLINE_MARKER: &str = "//~";
 
 const E: &str = "";
@@ -51,6 +48,16 @@ impl TestCase {
         })
     }
 
+    fn parse_header(line: &str) -> Option<&str> {
+        // trim the slashes and spaces. This has to be multi-step trimming to preserve intentional slashes.
+        // turn "    ///// my test ending with slash/ /////" into "my test ending with slash/"
+        let text = line
+            .trim() // remove leading and trailing whitespace
+            .trim_matches('/') // remove the ///// blocks
+            .trim(); // remove whitespace between the slashes and the header text
+        (!text.is_empty()).then_some(text)
+    }
+
     pub(crate) fn from_lines<'a, I>(
         file_stem: &str,
         lines: &mut Peekable<I>,
@@ -60,15 +67,23 @@ impl TestCase {
     where
         I: Iterator<Item = (usize, &'a str)>,
     {
-        let (start_line_number, start_line) = lines.next().unwrap();
+        let (start_line_number, start_line) = lines.next().expect(
+            "logic error in err_span_check: TestCase::from_lines called with empty lines iterator",
+        );
         debug_assert!(
             start_line.trim_start().starts_with(META_INDICATOR),
             "logic error in err_span_check: TestCase::from_lines called with a non-meta line"
         );
 
-        // trim the slashes and spaces. This has to be multi-step trimming to preserve intentional slashes.
-        // turn "    ///// my test ending with slash/ /////" into "my test ending with slash/"
-        let display_name = start_line.trim().trim_matches('/').trim();
+        let Some(display_name) = Self::parse_header(start_line) else {
+            let msg = format!(
+                r#"Failed to parse test case header: expected a line like 
+{META_INDICATOR} <name> {META_INDICATOR}
+but got
+{start_line}"#
+            );
+            return Err((start_line_number, msg));
+        };
         let display_name = if !display_name.is_empty() {
             display_name.to_owned()
         } else {
@@ -105,7 +120,9 @@ impl TestCase {
         }
 
         let mut end_separator = None;
-        if let Some((_, separator)) = lines.next_if(|(_, l)| l.trim() == BLOCK_SEPARATOR) {
+        // We are either at the end of the file, at a header, or at a block separator
+        // => a line that is not a header must be a separator.
+        if let Some((_, separator)) = lines.next_if(|(_, l)| Self::parse_header(l).is_none()) {
             end_separator = Some(separator.to_string());
             writeln!(expected, "{separator}").unwrap();
         };
