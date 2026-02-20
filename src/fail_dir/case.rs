@@ -28,10 +28,11 @@ pub(crate) struct TestCase {
     setup_code_prefix_length: usize,
 }
 
-/// Indicator used to mark a break. Can be: Start of a test case, ERRORS_HEADER, or BLOCK_SEPARATOR.
+/// Indicator used to mark a break. Can be: Start of a test case or BLOCK_SEPARATOR.
 const META_INDICATOR: &str = "/////";
 
-const ERRORS_HEADER: &str = "//////////////////// errors ////////////////////";
+const ERRORS_HEADER: &str = "//~~~~~~~~~~~~~~~~~~~~ errors ~~~~~~~~~~~~~~~~~~~~//";
+const ERROR_HEADER_INDICATOR: &str = "//~~~";
 
 const INLINE_MARKER: &str = "//~";
 
@@ -44,7 +45,10 @@ impl TestCase {
     ) -> impl Iterator<Item = (usize, &'input str)> + 'a {
         let iter = lines.by_ref();
         std::iter::from_fn(move || {
-            iter.next_if(|(_, line)| !line.trim_start().starts_with(META_INDICATOR))
+            iter.next_if(|(_, line)| {
+                let trimmed = line.trim_start();
+                !trimmed.starts_with(META_INDICATOR) && !trimmed.starts_with(ERROR_HEADER_INDICATOR)
+            })
         })
     }
 
@@ -111,7 +115,9 @@ but got
             }
         }
 
-        if let Some((_, header)) = lines.next_if(|(_, l)| l.trim() == ERRORS_HEADER) {
+        if let Some((_, header)) =
+            lines.next_if(|(_, l)| l.trim().starts_with(ERROR_HEADER_INDICATOR))
+        {
             writeln!(expected, "{header}").unwrap();
 
             for (_, line) in Self::take_until_meta(lines) {

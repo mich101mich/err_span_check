@@ -22,7 +22,7 @@ TODO: Things to talk about:
   - Line with at least 10 `//////////` and nothing else to end test case
   - test blocks are removed for other tests
 - produces error annotations (not written by hand!)
-  - `//////////////////// errors ////////////////////` to start external errors
+  - `//~~~~~~~~~~~~~~~~~~~~ errors ~~~~~~~~~~~~~~~~~~~~//` to start external errors
   - `//~` marks an inline spanned message
     - line will be removed from actual test, so might appear in an invalid place
 

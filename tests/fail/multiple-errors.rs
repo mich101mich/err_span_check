@@ -1,7 +1,7 @@
 ///// explicit compile error /////
 compile_error!("ERROR");
 
-//////////////////// errors ////////////////////
+//~~~~~~~~~~~~~~~~~~~~ errors ~~~~~~~~~~~~~~~~~~~~//
 
 // error: ERROR
 //  --> multiple-errors.rs:1:1
@@ -17,7 +17,7 @@ fn nothing() {
 
 ///// and a third one /////
 compile_error!("THIRD ERROR");
-//////////////////// errors ////////////////////
+//~~~~~~~~~~~~~~~~~~~~ errors ~~~~~~~~~~~~~~~~~~~~//
 
 // error: THIRD ERROR
 //  --> multiple-errors.rs:1:1
