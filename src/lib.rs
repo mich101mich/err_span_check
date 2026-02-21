@@ -17,6 +17,7 @@
     rustdoc::redundant_explicit_links,
     rustdoc::unescaped_backticks
 )]
+#![allow(clippy::test_attr_in_doctest)] // false positive on the #[test] in the doc comment for run_on_fail_dir
 
 //! [![github]](https://github.com/mich101mich/err_span_check)&ensp;[![crates-io]](https://crates.io/crates/err_span_check)&ensp;[![docs-rs]](https://docs.rs/err_span_check)
 //!
@@ -51,7 +52,6 @@
 //! A minimal err_span_check setup looks like this:
 //!
 //! ```
-//! # #[allow(clippy::test_attr_in_doctest)]
 //! #[test]
 //! fn ui() {
 //!     let t = err_span_check::TestCases::new();
@@ -245,7 +245,6 @@ pub(crate) use std::{
 /// The entry point for this crate. Call this once inside of a test function.
 ///
 /// ```
-/// # #[allow(clippy::test_attr_in_doctest)]
 /// #[test]
 /// fn test() {
 ///     err_span_check::run_on_fail_dir();

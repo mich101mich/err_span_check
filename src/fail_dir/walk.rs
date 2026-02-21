@@ -106,10 +106,11 @@ Note that the tests/fail directory is only allowed to contain compile-fail test 
                 let content = std::fs::read_to_string(&path)
                     .path_context(&path, "failed to read test file: <path>")?;
 
+                let path = path.canonicalize().unwrap_or_else(|_| path.clone());
                 files.insert(
                     stem.to_owned(),
                     File {
-                        path: path.clone(),
+                        path,
                         relative_path: relative_dir.join(&filename),
                         content,
                     },

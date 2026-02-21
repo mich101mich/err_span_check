@@ -21,7 +21,7 @@ fn cargo(project: &Project) -> Command {
     cmd.env(
         "CARGO_TARGET_DIR",
         project.target_dir.join("tests").join("err_span_check"),
-    );
+    ); // TODO: consider using the same target dir?
     cmd.env("CARGO_INCREMENTAL", "0");
     cmd.arg("--offline");
 

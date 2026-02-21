@@ -25,13 +25,13 @@ impl GitRepo {
 
     /// Check the (working tree) status of the given path to see if there are unstaged changes
     pub(crate) fn is_clean(&self, path: &Path) -> Result<()> {
-        let path = path.strip_prefix(&self.root).with_context(|| {
-            format!(
+        let Ok(path) = path.strip_prefix(&self.root) else {
+            bail!(
                 "failed to strip git repository root {} from path {}",
                 self.root.display(),
                 path.display()
             )
-        })?;
+        };
 
         let show = git2::StatusShow::Workdir;
         let mut opts = git2::StatusOptions::new();

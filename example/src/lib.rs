@@ -1,6 +1,6 @@
 use proc_macro2::TokenStream;
 use quote::{ToTokens, quote, quote_spanned};
-use syn::Result;
+use syn::{Result, spanned::Spanned};
 
 /// A simple procedural macro
 #[proc_macro]
@@ -36,10 +36,11 @@ mod basic {
         pub fn produce_output(&self) -> Result<TokenStream> {
             assert!(!self.a.contains('!'), "the literal should not contain '!'");
             let Input { a, b, c } = self;
+            let var = syn::Ident::new("x", c.span());
             Ok(quote! {
-                let x = #c; // make sure we only evaluate c once
-                println!("{}: {}", #a, x);
-                let _: #b = x;
+                let #var = #c; // make sure we only evaluate c once
+                println!("{}: {}", #a, #var);
+                let _: #b = #var;
             })
         }
     }
