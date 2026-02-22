@@ -21,7 +21,7 @@ a [procedural macro], you are in a position where your errors are rendered as co
 a proc-macro, you might want to put extra effort into making your errors as helpful as possible.
 
 This can pose a serious challenge though, as proc-macro development is fairly niche and many of the required tools are
-still waiting for stabilization (see [1], [2]). One of the core challenges is settings [`Span`]s correctly, aka the
+still waiting for stabilization (see [1], [2]). One of the core challenges is setting [`Span`]s correctly, a.k.a. the
 region of the source code that is underlined by the error. This crate provides a simple way to verify that your
 macro underlines the correct part of the code with its errors.
 
@@ -73,7 +73,8 @@ macro underlines the correct part of the code with its errors.
     }
     ```
 
-    A test case ends at the start of the next test case or a line consisting of only `/////`...\
+    A test case ends at the start of the next test case or a line consisting of only `/////`...
+
     Any code outside of a test case is shared between all test cases in the file. Note that test cases can't "see"
     each other.
 
