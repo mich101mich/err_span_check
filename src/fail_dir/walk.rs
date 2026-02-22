@@ -103,6 +103,14 @@ impl Directory {
 Note that the tests/fail directory is only allowed to contain compile-fail test files."#,
                     )?;
 
+                if stem == "main" && relative_dir.as_os_str().is_empty() {
+                    bail!(
+                        r#"filename 'main.rs' is not allowed in the root of the fail directory, as it would cause conflicts with Rust's test runner.
+Please choose a different name for the test file: {}"#,
+                        path.display()
+                    );
+                }
+
                 let content = std::fs::read_to_string(&path)
                     .path_context(&path, "failed to read test file: <path>")?;
 
