@@ -328,3 +328,38 @@ fn write_indented(f: &mut String, first_line: &str, indentation: &str, text: &st
         writeln!(f, "{prefix}{line}").unwrap();
     }
 }
+
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+
+//     #[test]
+//     fn test_take_until_meta() {
+//         todo!()
+//     }
+
+//     #[test]
+//     fn test_parse_header() {
+//         todo!()
+//     }
+
+//     #[test]
+//     fn test_from_lines() {
+//         todo!()
+//     }
+
+//     #[test]
+//     fn test_add_suffix() {
+//         todo!()
+//     }
+
+//     #[test]
+//     fn test_annotate_with() {
+//         todo!()
+//     }
+
+//     #[test]
+//     fn test_write_indented() {
+//         todo!()
+//     }
+// }

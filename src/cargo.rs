@@ -37,12 +37,16 @@ fn cargo(project: &Project) -> Command {
 
 pub(crate) fn manifest_dir() -> Result<PathBuf> {
     if let Some(manifest_dir) = std::env::var_os("CARGO_MANIFEST_DIR") {
-        return Ok(PathBuf::from(manifest_dir));
+        return PathBuf::from(manifest_dir)
+            .canonicalize()
+            .context("failed to canonicalize CARGO_MANIFEST_DIR");
     }
     let current_dir = std::env::current_dir().context("failed to get current directory")?;
     for dir in current_dir.ancestors() {
         if dir.join("Cargo.toml").exists() {
-            return Ok(dir.to_path_buf());
+            return dir
+                .canonicalize()
+                .context("failed to canonicalize std::env::current_dir()");
         }
     }
     bail!("failed to determine name of project dir")

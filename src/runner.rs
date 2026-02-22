@@ -37,7 +37,7 @@ pub(crate) fn run() -> Result<()> {
     let mut active_test_files = vec![];
 
     for file in &test_files {
-        if file.error.is_some() {
+        if file.has_error() {
             continue;
         }
 
@@ -69,7 +69,7 @@ pub(crate) fn run() -> Result<()> {
             message::begin_test("err_span_check file parse", &file.relative_path, 0);
             message::fail(error);
             continue;
-        } else if let Err(error) = file.status {
+        } else if let Err(error) = file.git_status {
             // We refuse to even run tests on files that have unstaged changes to make tests deterministic.
             // Otherwise, they would succeed after one run due to updating.
             total += 1;

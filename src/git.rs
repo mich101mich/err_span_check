@@ -18,6 +18,8 @@ impl GitRepo {
         let root = root
             .parent()
             .context(".git directory has no parent")?
+            .canonicalize()
+            .context("failed to canonicalize git repository root")?
             .to_path_buf();
 
         Ok(Self { repo, root })

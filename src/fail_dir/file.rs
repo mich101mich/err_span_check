@@ -13,7 +13,7 @@ pub(crate) struct TestFile {
     /// The test cases or blocks of setup code contained in this test file.
     pub blocks: Vec<Block>,
     /// The git status of this file. Ok(()) means clean, errors are self-explanatory.
-    pub status: Result<()>,
+    pub git_status: Result<()>,
     /// If an error occurred while processing this test file, it is stored here.
     /// This allows us to continue processing other test files.
     pub error: Option<Error>,
@@ -37,7 +37,7 @@ impl TestFile {
             original_content: String::new(),
             setup_code: vec![],
             blocks: vec![],
-            status: Ok(()),
+            git_status: Ok(()),
             error: Some(error),
         }
     }
@@ -47,7 +47,6 @@ impl TestFile {
         relative_path: PathBuf,
         file_stem: &str,
         original_content: String,
-        repo: &git::GitRepo,
     ) -> Self {
         let (setup_code, blocks) = match Self::parse_test_cases(file_stem, &original_content) {
             Ok(value) => value,
@@ -60,15 +59,13 @@ impl TestFile {
             }
         };
 
-        let status = repo.is_clean(&path);
-
         TestFile {
             path,
             relative_path,
             original_content,
             setup_code,
             blocks,
-            status,
+            git_status: Ok(()),
             error: None,
         }
     }
@@ -113,9 +110,13 @@ impl TestFile {
             original_content,
             setup_code: existing.setup_code,
             blocks,
-            status: Ok(()), // We create this file, so it is clean by definition
+            git_status: Ok(()), // We create this file, so it is clean by definition
             error: existing.error,
         }
+    }
+
+    pub fn has_error(&self) -> bool {
+        self.error.is_some() || self.git_status.is_err()
     }
 
     fn parse_test_cases(
@@ -189,3 +190,18 @@ impl TestFile {
         Ok(())
     }
 }
+
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+
+//     #[test]
+//     fn test_parse_test_cases() {
+//         todo!()
+//     }
+
+//     #[test]
+//     fn test_copy_from() {
+//         todo!()
+//     }
+// }

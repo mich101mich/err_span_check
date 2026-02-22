@@ -11,9 +11,12 @@ pub(crate) fn parse_test_files(base_dir: PathBuf) -> Result<Vec<TestFile>, Error
         );
     }
 
-    let mut state = FailDirState::new(&fail_dir)?;
+    let repo = git::GitRepo::open(&fail_dir)?;
+    let dir = Directory::scan(fail_dir, PathBuf::new(), &repo)?;
 
-    let dir = Directory::scan(fail_dir, PathBuf::new())?;
+    let is_nightly = rustc_version::version_meta()
+        .is_ok_and(|meta| meta.channel == rustc_version::Channel::Nightly);
+    let mut state = FailDirState::new(is_nightly);
     flatten_directory(dir, &mut state);
 
     Ok(state.test_files)
@@ -30,6 +33,7 @@ struct File {
     path: PathBuf,
     relative_path: PathBuf,
     content: String,
+    git_status: Result<()>,
 }
 
 struct FailDirState {
@@ -37,25 +41,31 @@ struct FailDirState {
     unique_files: HashMap<String, usize>,
     /// Flag if we are using the nightly channel
     is_nightly: bool,
-    /// Git repository for checking if files are clean
-    repo: git::GitRepo,
     /// List of all test files found in the fail directory
     test_files: Vec<TestFile>,
 }
 
 impl FailDirState {
-    fn new(fail_dir: &Path) -> Result<Self, Error> {
-        Ok(Self {
+    fn new(is_nightly: bool) -> Self {
+        Self {
             unique_files: HashMap::new(),
-            is_nightly: rustc_version::version_meta()
-                .is_ok_and(|meta| meta.channel == rustc_version::Channel::Nightly),
-            repo: git::GitRepo::open(fail_dir)?,
+            is_nightly,
             test_files: vec![],
-        })
+        }
     }
 
-    fn add_test_file(&mut self, file: File, stem: &str) {
-        let file = self.make_test_file(file, stem);
+    fn add_test_file(&mut self, mut file: File, stem: &str) {
+        let git_status = std::mem::replace(&mut file.git_status, Ok(()));
+
+        let mut file = self.make_test_file(file, stem);
+
+        // parsing error takes precedence over git error, since it means the file will need to be modified anyway
+        if file.error.is_none()
+            && let Err(git_error) = git_status
+        {
+            file.git_status = Err(git_error);
+        }
+
         self.test_files.push(file);
     }
 
@@ -65,13 +75,7 @@ impl FailDirState {
         *count += 1;
         let stem = format!("{}_{}", stem, count);
 
-        TestFile::from_file(
-            file.path,
-            file.relative_path,
-            &stem,
-            file.content,
-            &self.repo,
-        )
+        TestFile::from_file(file.path, file.relative_path, &stem, file.content)
     }
 
     fn add_test_error(&mut self, path: PathBuf, relative_path: PathBuf, error: Error) {
@@ -81,7 +85,7 @@ impl FailDirState {
 }
 
 impl Directory {
-    fn scan(dir: PathBuf, relative_dir: PathBuf) -> Result<Self> {
+    fn scan(dir: PathBuf, relative_dir: PathBuf, repo: &git::GitRepo) -> Result<Self> {
         let mut files = BTreeMap::new();
         let mut subdirs = BTreeMap::new();
 
@@ -92,6 +96,7 @@ impl Directory {
 
             let filename = entry.file_name();
             let path = entry.path();
+            let relative_path = relative_dir.join(&filename);
             if path.is_file() {
                 let stem = filename
                     .to_str()
@@ -111,20 +116,23 @@ Please choose a different name for the test file: {}"#,
                     );
                 }
 
+                let path = path.canonicalize().unwrap_or_else(|_| path.clone());
+
                 let content = std::fs::read_to_string(&path)
                     .path_context(&path, "failed to read test file: <path>")?;
+                let git_status = repo.is_clean(&path);
 
-                let path = path.canonicalize().unwrap_or_else(|_| path.clone());
                 files.insert(
                     stem.to_owned(),
                     File {
                         path,
-                        relative_path: relative_dir.join(&filename),
+                        relative_path,
                         content,
+                        git_status,
                     },
                 );
             } else if path.is_dir() {
-                let subdir = Directory::scan(path, relative_dir.join(&filename))?;
+                let subdir = Directory::scan(path, relative_path, repo)?;
                 if !subdir.files.is_empty() || !subdir.subdirs.is_empty() {
                     let name = filename.to_string_lossy().to_string();
                     subdirs.insert(name, subdir);
@@ -248,7 +256,7 @@ fn merge_nightly_from_stable(stable: Directory, nightly: Directory, state: &mut 
             let (_, nightly_subdir) = nightly_subdir.unwrap(); // unwrap: guaranteed by OrdUnion
             let error = anyhow::anyhow!(
                 "found nightly sub-directory {} without corresponding sub-directory in stable directory",
-                nightly_subdir.relative_dir.display()
+                nightly_subdir.dir.display()
             );
             state.add_test_error(nightly_subdir.dir, nightly_subdir.relative_dir, error);
             continue;
@@ -307,5 +315,340 @@ impl<V> Iterator for OrdUnion<V> {
         let a = self.a.next_if(|_| use_a);
         let b = self.b.next_if(|_| use_b);
         Some((a, b))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn s(t: &str) -> String {
+        t.to_string()
+    }
+    fn p(t: impl AsRef<str>) -> PathBuf {
+        PathBuf::from(t.as_ref())
+    }
+    fn to_map<V, const N: usize>(pairs: [(&str, V); N]) -> BTreeMap<String, V> {
+        pairs.into_iter().map(|(k, v)| (s(k), v)).collect()
+    }
+
+    mod ord_union {
+        use super::*;
+
+        #[test]
+        fn basic() {
+            let a = to_map([("a", true), ("b", true), ("d", true), ("e", true)]);
+            let b = to_map([("b", false), ("c", false), ("d", false), ("f", false)]);
+
+            let result: Vec<_> = OrdUnion::new(a, b).collect();
+            assert_eq!(result.len(), 6);
+            assert_eq!(result[0], (Some((s("a"), true)), None));
+            assert_eq!(result[1], (Some((s("b"), true)), Some((s("b"), false))));
+            assert_eq!(result[2], (None, Some((s("c"), false))));
+            assert_eq!(result[3], (Some((s("d"), true)), Some((s("d"), false))));
+            assert_eq!(result[4], (Some((s("e"), true)), None));
+            assert_eq!(result[5], (None, Some((s("f"), false))));
+        }
+
+        #[test]
+        fn only_left() {
+            let a = to_map([("a", true), ("b", true), ("d", true), ("e", true)]);
+            let b = to_map([]);
+
+            let result: Vec<_> = OrdUnion::new(a, b).collect();
+            assert_eq!(result.len(), 4);
+            assert_eq!(result[0], (Some((s("a"), true)), None));
+            assert_eq!(result[1], (Some((s("b"), true)), None));
+            assert_eq!(result[2], (Some((s("d"), true)), None));
+            assert_eq!(result[3], (Some((s("e"), true)), None));
+        }
+
+        #[test]
+        fn only_right() {
+            let a = to_map([]);
+            let b = to_map([("b", false), ("c", false), ("d", false), ("f", false)]);
+
+            let result: Vec<_> = OrdUnion::new(a, b).collect();
+            assert_eq!(result.len(), 4);
+            assert_eq!(result[0], (None, Some((s("b"), false))));
+            assert_eq!(result[1], (None, Some((s("c"), false))));
+            assert_eq!(result[2], (None, Some((s("d"), false))));
+            assert_eq!(result[3], (None, Some((s("f"), false))));
+        }
+
+        #[test]
+        fn b_then_a() {
+            let a = to_map([("x", true), ("y", true), ("z", true)]);
+            let b = to_map([("a", false), ("b", false), ("c", false)]);
+
+            let result: Vec<_> = OrdUnion::new(a, b).collect();
+            assert_eq!(result.len(), 6);
+            assert_eq!(result[0], (None, Some((s("a"), false))));
+            assert_eq!(result[1], (None, Some((s("b"), false))));
+            assert_eq!(result[2], (None, Some((s("c"), false))));
+            assert_eq!(result[3], (Some((s("x"), true)), None));
+            assert_eq!(result[4], (Some((s("y"), true)), None));
+            assert_eq!(result[5], (Some((s("z"), true)), None));
+        }
+
+        #[test]
+        fn empty() {
+            let a = to_map([]);
+            let b = to_map([]);
+
+            let result: Vec<_> = OrdUnion::<bool>::new(a, b).collect();
+            assert!(result.is_empty());
+        }
+    }
+
+    mod flatten_directory {
+        use super::*;
+
+        fn file<'a>(
+            relative_path: &str,
+            name: &'a str,
+            content: Result<&str, &str>,
+            git_status: Result<(), &str>,
+        ) -> (&'a str, File) {
+            let content = match content {
+                Ok(c) => format!("///// test\n{c}"),
+                Err(e) => s(e),
+            };
+            let git_status = match git_status {
+                Ok(()) => Ok(()),
+                Err(e) => Err(anyhow::anyhow!(s(e))),
+            };
+            let relative_path = if relative_path.is_empty() {
+                format!("{name}.rs")
+            } else {
+                format!("{relative_path}/{name}.rs")
+            };
+            let file = File {
+                path: p(format!("/fail/{relative_path}")),
+                relative_path: p(relative_path),
+                content,
+                git_status,
+            };
+            (name, file)
+        }
+        fn dir<'a, const F: usize, const D: usize>(
+            relative_path: &str,
+            name: &'a str,
+            files: [(&str, File); F],
+            subdirs: [(&str, Directory); D],
+        ) -> (&'a str, Directory) {
+            let relative_path = if relative_path.is_empty() {
+                s(name)
+            } else {
+                format!("{relative_path}/{name}")
+            };
+            let dir = Directory {
+                dir: p(format!("/fail/{relative_path}")),
+                relative_dir: p(relative_path),
+                files: to_map(files),
+                subdirs: to_map(subdirs),
+            };
+            (name, dir)
+        }
+
+        fn make_basic_dir() -> Directory {
+            let a = file("", "a", Ok("test content"), Ok(()));
+            let b = file("", "b", Err("faulty content"), Ok(()));
+            let c = file("stable", "c", Ok("more content"), Err("git error"));
+            let d = file("stable/inner", "d", Ok("inner content"), Ok(()));
+            let e = file("other", "e", Ok("other content"), Ok(()));
+            Directory {
+                dir: p("/fail"),
+                relative_dir: p(""),
+                files: to_map([a, b]),
+                subdirs: to_map([
+                    dir("", "stable", [c], [dir("stable", "inner", [d], [])]),
+                    dir("", "other", [e], []),
+                ]),
+            }
+        }
+
+        #[test]
+        fn basic_stable() {
+            let mut state = FailDirState::new(false);
+            flatten_directory(make_basic_dir(), &mut state);
+
+            let mut iter = state.test_files.into_iter();
+            let a = iter.next().unwrap();
+            assert_eq!(a.path, p("/fail/a.rs"));
+            assert_eq!(a.relative_path, p("a.rs"));
+            assert_eq!(a.original_content, "///// test\ntest content");
+            assert!(!a.blocks.is_empty());
+            assert!(!a.has_error());
+
+            let b = iter.next().unwrap();
+            assert_eq!(b.path, p("/fail/b.rs"));
+            assert_eq!(b.relative_path, p("b.rs"));
+            assert_eq!(b.original_content, ""); // empty due to error
+            assert!(b.blocks.is_empty()); // no blocks due to error
+            assert!(b.git_status.is_ok());
+            assert_eq!(
+                b.error.unwrap().to_string(),
+                "Failed to parse test case from /fail/b.rs:1: no test cases found"
+            );
+
+            let c = iter.next().unwrap();
+            assert_eq!(c.path, p("/fail/stable/c.rs"));
+            assert_eq!(c.relative_path, p("stable/c.rs"));
+            assert_eq!(c.original_content, "///// test\nmore content");
+            assert!(!c.blocks.is_empty());
+            assert_eq!(c.git_status.unwrap_err().to_string(), "git error");
+            assert!(c.error.is_none());
+
+            let d = iter.next().unwrap();
+            assert_eq!(d.path, p("/fail/stable/inner/d.rs"));
+            assert_eq!(d.relative_path, p("stable/inner/d.rs"));
+            assert_eq!(d.original_content, "///// test\ninner content");
+            assert!(!d.blocks.is_empty());
+            assert!(!d.has_error());
+
+            let e = iter.next().unwrap();
+            assert_eq!(e.path, p("/fail/other/e.rs"));
+            assert_eq!(e.relative_path, p("other/e.rs"));
+            assert_eq!(e.original_content, "///// test\nother content");
+            assert!(!e.blocks.is_empty());
+            assert!(!e.has_error());
+
+            assert!(iter.next().is_none());
+        }
+
+        #[test]
+        fn basic_nightly() {
+            let mut state = FailDirState::new(true);
+            flatten_directory(make_basic_dir(), &mut state);
+
+            let mut iter = state.test_files.into_iter();
+            let a = iter.next().unwrap();
+            assert_eq!(a.path, p("/fail/a.rs"));
+            assert_eq!(a.relative_path, p("a.rs"));
+            assert_eq!(a.original_content, "///// test\ntest content");
+            assert!(!a.blocks.is_empty());
+            assert!(!a.has_error());
+
+            let b = iter.next().unwrap();
+            assert_eq!(b.path, p("/fail/b.rs"));
+            assert_eq!(b.relative_path, p("b.rs"));
+            assert_eq!(b.original_content, ""); // empty due to error
+            assert!(b.blocks.is_empty()); // no blocks due to error
+            assert!(b.git_status.is_ok());
+            assert_eq!(
+                b.error.unwrap().to_string(),
+                "Failed to parse test case from /fail/b.rs:1: no test cases found"
+            );
+
+            let c = iter.next().unwrap();
+            assert_eq!(c.path, p("/fail/nightly/c.rs"));
+            assert_eq!(c.relative_path, p("nightly/c.rs"));
+            assert_eq!(c.original_content, ""); // file did not exist before
+            assert!(!c.blocks.is_empty());
+            assert!(!c.has_error());
+
+            let d = iter.next().unwrap();
+            assert_eq!(d.path, p("/fail/nightly/inner/d.rs"));
+            assert_eq!(d.relative_path, p("nightly/inner/d.rs"));
+            assert_eq!(d.original_content, ""); // file did not exist before
+            assert!(!d.blocks.is_empty());
+            assert!(!d.has_error());
+
+            let e = iter.next().unwrap();
+            assert_eq!(e.path, p("/fail/other/e.rs"));
+            assert_eq!(e.relative_path, p("other/e.rs"));
+            assert_eq!(e.original_content, "///// test\nother content");
+            assert!(!e.blocks.is_empty());
+            assert!(!e.has_error());
+
+            assert!(iter.next().is_none());
+        }
+
+        #[test]
+        fn nested_stable_nightly() {
+            let a = file("stable/stable", "a", Ok("test content"), Ok(()));
+            let dir = Directory {
+                dir: p("/fail"),
+                relative_dir: p(""),
+                files: to_map([]),
+                subdirs: to_map([dir("", "stable", [], [dir("stable", "stable", [a], [])])]),
+            };
+
+            let mut state = FailDirState::new(false);
+            flatten_directory(dir, &mut state);
+
+            let mut iter = state.test_files.into_iter();
+            let inner_dir = iter.next().unwrap();
+            assert_eq!(inner_dir.path, p("/fail/stable"));
+            assert_eq!(inner_dir.relative_path, p("stable"));
+            assert!(inner_dir.error.is_some());
+            assert_eq!(
+                inner_dir.error.as_ref().unwrap().to_string(),
+                "nested stable/nightly directories are not allowed"
+            );
+
+            assert!(iter.next().is_none());
+        }
+
+        #[test]
+        fn nightly_without_stable_toplevel() {
+            let dir = Directory {
+                dir: p("/fail"),
+                relative_dir: p(""),
+                files: to_map([]),
+                subdirs: to_map([dir("", "nightly", [], [])]),
+            };
+
+            let mut state = FailDirState::new(true);
+            flatten_directory(dir, &mut state);
+
+            let mut iter = state.test_files.into_iter();
+            let nightly = iter.next().unwrap();
+            assert_eq!(nightly.path, p("/fail/nightly"));
+            assert_eq!(nightly.relative_path, p("nightly"));
+            assert_eq!(
+                nightly.error.as_ref().unwrap().to_string(),
+                "found nightly directory in /fail without corresponding stable directory"
+            );
+
+            assert!(iter.next().is_none());
+        }
+
+        #[test]
+        fn nightly_without_stable_inner() {
+            let a = file("nightly", "a", Ok("test content"), Ok(()));
+            let dir = Directory {
+                dir: p("/fail"),
+                relative_dir: p(""),
+                files: to_map([]),
+                subdirs: to_map([
+                    dir("", "stable", [], []),
+                    dir("", "nightly", [a], [dir("nightly", "inner", [], [])]),
+                ]),
+            };
+
+            let mut state = FailDirState::new(true);
+            flatten_directory(dir, &mut state);
+
+            let mut iter = state.test_files.into_iter();
+            let a = iter.next().unwrap();
+            assert_eq!(a.path, p("/fail/nightly/a.rs"));
+            assert_eq!(a.relative_path, p("nightly/a.rs"));
+            assert_eq!(
+                a.error.as_ref().unwrap().to_string(),
+                "found nightly file /fail/nightly/a.rs without corresponding file in stable directory"
+            );
+
+            let inner = iter.next().unwrap();
+            assert_eq!(inner.path, p("/fail/nightly/inner"));
+            assert_eq!(inner.relative_path, p("nightly/inner"));
+            assert_eq!(
+                inner.error.as_ref().unwrap().to_string(),
+                "found nightly sub-directory /fail/nightly/inner without corresponding sub-directory in stable directory"
+            );
+
+            assert!(iter.next().is_none());
+        }
     }
 }
