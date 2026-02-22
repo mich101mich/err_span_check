@@ -41,15 +41,10 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions-rs/toolchain@v1
         with: { toolchain: nightly, override: true, components: clippy }
-      - name: Run clippy in sscanf
+      - name: Run clippy
         uses: actions-rs/clippy-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Run clippy in sscanf_macro
-        uses: actions-rs/clippy-check@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          args: --manifest-path sscanf_macro/Cargo.toml
 
   minimal-versions:
     runs-on: ubuntu-latest
