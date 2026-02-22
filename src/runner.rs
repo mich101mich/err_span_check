@@ -1,6 +1,12 @@
 use crate::*;
 
+static INVOKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 pub(crate) fn run() -> Result<()> {
+    if INVOKED.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        panic!("err_span_check was invoked multiple times, which is not supported");
+    }
+
     let start_time = std::time::Instant::now();
 
     let base_dir = cargo::manifest_dir()?;
