@@ -1,115 +1,78 @@
 #[cfg(test)]
-#[path = "tests.rs"]
 mod tests;
 
-use self::Normalization::*;
-use crate::directory::Directory;
-use crate::run::PathDependency;
-use std::cmp;
-use std::mem;
-use std::path::Path;
+use super::*;
 
-#[derive(Copy, Clone)]
-pub(crate) struct Context<'a> {
-    pub krate: &'a str,
-    pub source_dir: &'a Directory,
-    pub workspace: &'a Directory,
-    pub input_file: &'a Path,
-    pub target_dir: &'a Directory,
-    pub path_dependencies: &'a [PathDependency],
+pub(crate) struct Normalizer {
+    /// Name of the crate being tested -> becomes `$CRATE`
+    krate: String,
+    /// Normalized path to the target directory -> becomes `$OUT_DIR`
+    target_dir_pat: String,
+    /// Normalized path to the input test file
+    input_file_pat: String,
+    /// Normalized path to the workspace directory -> becomes `$WORKSPACE`
+    workspace_pat: String,
+    /// Path to replace input_file_pat with in the output, since test files are split
+    replaced_path: String,
+    /// Dependencies from local paths
+    path_dependencies: Vec<(String, String)>,
 }
 
-macro_rules! normalizations {
-    ($($name:ident,)*) => {
-        #[derive(PartialOrd, PartialEq, Copy, Clone)]
-        enum Normalization {
-            $($name,)*
-        }
+impl Normalizer {
+    pub(crate) fn new(project: &Project, local_path: &Path, replaced_path: &Path) -> Self {
+        let input_file_pat = path_to_pat(local_path);
+        let target_dir_pat = dir_to_pat(&project.target_dir);
+        let workspace_pat = dir_to_pat(&project.workspace);
 
-        impl Normalization {
-            const ALL: &'static [Self] = &[$($name),*];
-        }
+        let replaced_path = replaced_path.to_string_lossy().replace('\\', "/");
 
-        impl Default for Variations {
-            fn default() -> Self {
-                Variations {
-                    variations: [$(($name, String::new()).1),*],
+        let path_dependencies = project
+            .path_dependencies
+            .iter()
+            .map(|path_dep| {
+                let name = format!("${}", path_dep.name.to_uppercase().replace('-', "_"));
+                let path_dep_pat = dir_to_pat(&path_dep.normalized_path);
+                (name, path_dep_pat)
+            })
+            .collect::<Vec<_>>();
+
+        Normalizer {
+            krate: project.name.to_owned(),
+            target_dir_pat,
+            input_file_pat,
+            workspace_pat,
+            replaced_path,
+            path_dependencies,
+        }
+    }
+
+    pub(crate) fn message(&self, output: &str) -> String {
+        // replace the file in case a proc macro uses the file name in the message
+        replace_case_insensitive(output, &self.input_file_pat, &self.replaced_path)
+    }
+
+    pub(crate) fn diagnostics(&self, original: &str) -> String {
+        let mut normalized = String::new();
+
+        let lines: Vec<&str> = original.lines().collect();
+        let mut filter = Filter {
+            all_lines: &lines,
+            context: self,
+            hide_numbers: 0,
+            other_types: None,
+        };
+        for i in 0..lines.len() {
+            if let Some(line) = filter.apply(i) {
+                normalized += &line;
+                if !normalized.ends_with("\n\n") {
+                    normalized.push('\n');
                 }
             }
         }
-    };
-}
 
-normalizations! {
-    Basic,
-    StripCouldNotCompile,
-    StripCouldNotCompile2,
-    StripForMoreInformation,
-    StripForMoreInformation2,
-    TrimEnd,
-    RustLib,
-    TypeDirBackslash,
-    WorkspaceLines,
-    PathDependencies,
-    CargoRegistry,
-    ArrowOtherCrate,
-    RelativeToDir,
-    LinesOutsideInputFile,
-    Unindent,
-    AndOthers,
-    StripLongTypeNameFiles,
-    UnindentAfterHelp,
-    AndOthersVerbose,
-    UnindentMultilineNote,
-    DependencyVersion,
-    HeadingNote,
-    UnindentSuggestion,
-    // New normalization steps are to be inserted here at the end so that any
-    // snapshots saved before your normalization change remain passing.
-}
+        normalized.truncate(normalized.trim_end().len());
 
-/// For a given compiler output, produces the set of saved outputs against which
-/// the compiler's output would be considered correct. If the test's saved
-/// stderr file is identical to any one of these variations, the test will pass.
-///
-/// This is a set rather than just one normalized output in order to avoid
-/// breaking existing tests when introducing new normalization steps. Someone
-/// may have saved stderr snapshots with an older version of trybuild, and those
-/// tests need to continue to pass with newer versions of trybuild.
-///
-/// There is one "preferred" variation which is what we print when the stderr
-/// file is absent or not a match.
-pub(crate) fn diagnostics(output: &str, context: Context) -> Variations {
-    let output = output.replace("\r\n", "\n");
-
-    let mut result = Variations::default();
-    for (i, normalization) in Normalization::ALL.iter().enumerate() {
-        result.variations[i] = apply(&output, *normalization, context);
-    }
-
-    result
-}
-
-pub(crate) struct Variations {
-    variations: [String; Normalization::ALL.len()],
-}
-
-impl Variations {
-    pub fn preferred(&self) -> &str {
-        self.variations.last().unwrap()
-    }
-
-    pub fn any<F: FnMut(&str) -> bool>(&self, mut f: F) -> bool {
-        self.variations.iter().any(|stderr| f(stderr))
-    }
-
-    pub fn concat(&mut self, other: &Self) {
-        for (this, other) in self.variations.iter_mut().zip(&other.variations) {
-            if !this.is_empty() && !other.is_empty() {
-                this.push('\n');
-            }
-            this.push_str(other);
-        }
+        trim(normalized)
     }
 }
 
@@ -127,35 +90,9 @@ pub(crate) fn trim<S: AsRef<[u8]>>(output: S) -> String {
     normalized
 }
 
-fn apply(original: &str, normalization: Normalization, context: Context) -> String {
-    let mut normalized = String::new();
-
-    let lines: Vec<&str> = original.lines().collect();
-    let mut filter = Filter {
-        all_lines: &lines,
-        normalization,
-        context,
-        hide_numbers: 0,
-        other_types: None,
-    };
-    for i in 0..lines.len() {
-        if let Some(line) = filter.apply(i) {
-            normalized += &line;
-            if !normalized.ends_with("\n\n") {
-                normalized.push('\n');
-            }
-        }
-    }
-
-    normalized = unindent(normalized, normalization);
-
-    trim(normalized)
-}
-
 struct Filter<'a> {
     all_lines: &'a [&'a str],
-    normalization: Normalization,
-    context: Context<'a>,
+    context: &'a Normalizer,
     hide_numbers: usize,
     other_types: Option<usize>,
 }
@@ -163,6 +100,8 @@ struct Filter<'a> {
 impl<'a> Filter<'a> {
     fn apply(&mut self, index: usize) -> Option<String> {
         let mut line = self.all_lines[index].to_owned();
+
+        line.truncate(line.trim_end().len());
 
         if self.hide_numbers > 0 {
             hide_leading_numbers(&mut line);
@@ -179,39 +118,32 @@ impl<'a> Filter<'a> {
             None
         };
 
-        if prefix == Some("--> ") && self.normalization < ArrowOtherCrate {
-            if let Some(cut_end) = line.rfind(&['/', '\\'][..]) {
-                let cut_start = indent + 4;
-                line.replace_range(cut_start..cut_end + 1, "$DIR/");
-                return Some(line);
-            }
-        }
-
-        if prefix.is_some() {
+        if let Some(prefix) = prefix {
             line = line.replace('\\', "/");
             let line_lower = line.to_ascii_lowercase();
-            let target_dir_pat = self
-                .context
-                .target_dir
-                .to_string_lossy()
-                .to_ascii_lowercase()
-                .replace('\\', "/");
-            let source_dir_pat = self
-                .context
-                .source_dir
-                .to_string_lossy()
-                .to_ascii_lowercase()
-                .replace('\\', "/");
+
+            let prefix_offset = indent + prefix.len();
+            let after_prefix = &line_lower[prefix_offset..];
+
+            let Normalizer {
+                target_dir_pat,
+                input_file_pat,
+                workspace_pat,
+                path_dependencies,
+                replaced_path,
+                ..
+            } = &self.context;
             let mut other_crate = false;
-            if line_lower.find(&target_dir_pat) == Some(indent + 4) {
-                let mut offset = indent + 4 + target_dir_pat.len();
+
+            if after_prefix.starts_with(target_dir_pat) {
+                let mut offset = prefix_offset + target_dir_pat.len();
                 let mut out_dir_crate_name = None;
                 while let Some(slash) = line[offset..].find('/') {
                     let component = &line[offset..offset + slash];
                     if component == "out" {
                         if let Some(out_dir_crate_name) = out_dir_crate_name {
                             let replacement = format!("$OUT_DIR[{}]", out_dir_crate_name);
-                            line.replace_range(indent + 4..offset + 3, &replacement);
+                            line.replace_range(prefix_offset..offset + 3, &replacement);
                             other_crate = true;
                             break;
                         }
@@ -225,59 +157,30 @@ impl<'a> Filter<'a> {
                     }
                     offset += slash + 1;
                 }
-            } else if let Some(i) = line_lower.find(&source_dir_pat) {
-                if self.normalization >= RelativeToDir && i == indent + 4 {
-                    line.replace_range(i..i + source_dir_pat.len(), "");
-                    if self.normalization < LinesOutsideInputFile {
-                        return Some(line);
-                    }
-                    let input_file_pat = self
-                        .context
-                        .input_file
-                        .to_string_lossy()
-                        .to_ascii_lowercase()
-                        .replace('\\', "/");
-                    if line_lower[i + source_dir_pat.len()..].starts_with(&input_file_pat) {
-                        // Keep line numbers only within the input file (the
-                        // path passed to our `fn compile_fail`. All other
-                        // source files get line numbers erased below.
-                        return Some(line);
-                    }
-                } else {
-                    line.replace_range(i..i + source_dir_pat.len() - 1, "$DIR");
-                    if self.normalization < LinesOutsideInputFile {
-                        return Some(line);
-                    }
-                }
+            } else if after_prefix.starts_with(input_file_pat) {
+                // Keep line numbers only within the input file (the
+                // path passed to our `fn compile_fail`. All other
+                // source files get line numbers erased below.
+
+                let range = prefix_offset..prefix_offset + input_file_pat.len();
+                line.replace_range(range, replaced_path);
+                return Some(line);
+            } else if let Some(i) = line_lower.find(workspace_pat) {
+                line.replace_range(i..i + workspace_pat.len() - 1, "$WORKSPACE");
                 other_crate = true;
-            } else {
-                let workspace_pat = self
-                    .context
-                    .workspace
-                    .to_string_lossy()
-                    .to_ascii_lowercase()
-                    .replace('\\', "/");
-                if let Some(i) = line_lower.find(&workspace_pat) {
-                    line.replace_range(i..i + workspace_pat.len() - 1, "$WORKSPACE");
-                    other_crate = true;
-                }
             }
-            if self.normalization >= PathDependencies && !other_crate {
-                for path_dep in self.context.path_dependencies {
-                    let path_dep_pat = path_dep
-                        .normalized_path
-                        .to_string_lossy()
-                        .to_ascii_lowercase()
-                        .replace('\\', "/");
-                    if let Some(i) = line_lower.find(&path_dep_pat) {
-                        let var = format!("${}", path_dep.name.to_uppercase().replace('-', "_"));
-                        line.replace_range(i..i + path_dep_pat.len() - 1, &var);
+
+            if !other_crate {
+                for (name, path_dep_pat) in path_dependencies {
+                    if let Some(i) = line_lower.find(path_dep_pat) {
+                        line.replace_range(i..i + path_dep_pat.len() - 1, name);
                         other_crate = true;
                         break;
                     }
                 }
             }
-            if self.normalization >= RustLib && !other_crate {
+
+            if !other_crate {
                 if let Some(pos) = line.find("/rustlib/src/rust/src/") {
                     // --> /home/.rustup/toolchains/nightly/lib/rustlib/src/rust/src/libstd/net/ip.rs:83:1
                     // --> $RUST/src/libstd/net/ip.rs:83:1
@@ -300,40 +203,36 @@ impl<'a> Filter<'a> {
                     other_crate = true;
                 }
             }
-            if self.normalization >= CargoRegistry && !other_crate {
-                if let Some(pos) = line
+            if !other_crate
+                && let Some(pos) = line
                     .find("/registry/src/github.com-")
                     .or_else(|| line.find("/registry/src/index.crates.io-"))
+            {
+                let hash_start = pos + line[pos..].find('-').unwrap() + 1;
+                let hash_end = hash_start + 16;
+                if line
+                    .get(hash_start..hash_end)
+                    .is_some_and(is_ascii_lowercase_hex)
+                    && line[hash_end..].starts_with('/')
                 {
-                    let hash_start = pos + line[pos..].find('-').unwrap() + 1;
-                    let hash_end = hash_start + 16;
-                    if line
-                        .get(hash_start..hash_end)
-                        .is_some_and(is_ascii_lowercase_hex)
-                        && line[hash_end..].starts_with('/')
+                    // --> /home/.cargo/registry/src/github.com-1ecc6299db9ec823/serde_json-1.0.64/src/de.rs:2584:8
+                    // --> $CARGO/serde_json-1.0.64/src/de.rs:2584:8
+                    line.replace_range(indent + 4..hash_end, "$CARGO");
+                    other_crate = true;
+                    let rest = &line[indent + 11..];
+                    let end_of_version = rest.find('/');
+                    if let Some(end_of_crate_name) = end_of_version
+                        .and_then(|end| rest[..end].find('.'))
+                        .and_then(|end| rest[..end].rfind('-'))
                     {
-                        // --> /home/.cargo/registry/src/github.com-1ecc6299db9ec823/serde_json-1.0.64/src/de.rs:2584:8
-                        // --> $CARGO/serde_json-1.0.64/src/de.rs:2584:8
-                        line.replace_range(indent + 4..hash_end, "$CARGO");
-                        other_crate = true;
-                        if self.normalization >= DependencyVersion {
-                            let rest = &line[indent + 11..];
-                            let end_of_version = rest.find('/');
-                            if let Some(end_of_crate_name) = end_of_version
-                                .and_then(|end| rest[..end].find('.'))
-                                .and_then(|end| rest[..end].rfind('-'))
-                            {
-                                line.replace_range(
-                                    indent + end_of_crate_name + 12
-                                        ..indent + end_of_version.unwrap() + 11,
-                                    "$VERSION",
-                                );
-                            }
-                        }
+                        line.replace_range(
+                            indent + end_of_crate_name + 12..indent + end_of_version.unwrap() + 11,
+                            "$VERSION",
+                        );
                     }
                 }
             }
-            if other_crate && self.normalization >= WorkspaceLines {
+            if other_crate {
                 // Blank out line numbers for this particular error since rustc
                 // tends to reach into code from outside of the test case. The
                 // test stderr shouldn't need to be updated every time we touch
@@ -350,10 +249,6 @@ impl<'a> Filter<'a> {
             return Some(line);
         }
 
-        if line.starts_with("error: aborting due to ") {
-            return None;
-        }
-
         if line == "To learn more, run the command again with --verbose." {
             return None;
         }
@@ -364,108 +259,89 @@ impl<'a> Filter<'a> {
             return None;
         }
 
-        if self.normalization >= StripCouldNotCompile {
-            if line.starts_with("error: Could not compile `") {
-                return None;
-            }
+        if line.starts_with("error: aborting due to ")
+            || line.starts_with("error: could not compile `")
+            || line.starts_with("error: Could not compile `")
+            || line.starts_with("For more information about this error, try `rustc --explain")
+            || line.starts_with("Some errors have detailed explanations:")
+            || line.starts_with("For more information about an error, try `rustc --explain")
+        {
+            return None;
         }
 
-        if self.normalization >= StripCouldNotCompile2 {
-            if line.starts_with("error: could not compile `") {
-                return None;
-            }
+        if line
+            .trim_start()
+            .starts_with("= note: required because it appears within the type")
+        {
+            line = line.replace('\\', "/");
         }
 
-        if self.normalization >= StripForMoreInformation {
-            if line.starts_with("For more information about this error, try `rustc --explain") {
-                return None;
-            }
+        let trim_start = line.trim_start();
+        if let Some(right) = trim_start.strip_prefix("and ")
+            && let Some(middle) = right.strip_suffix(" others")
+            && middle.bytes().all(|b| b.is_ascii_digit())
+        {
+            line = line.replace(middle, "$N");
         }
 
-        if self.normalization >= StripForMoreInformation2 {
-            if line.starts_with("Some errors have detailed explanations:") {
-                return None;
-            }
-            if line.starts_with("For more information about an error, try `rustc --explain") {
-                return None;
-            }
+        let trimmed_line = line.trim_start();
+        let trimmed_line = trimmed_line
+            .strip_prefix("= note: ")
+            .unwrap_or(trimmed_line);
+        if trimmed_line.starts_with("the full type name has been written to")
+            || trimmed_line.starts_with("the full name for the type has been written to")
+        {
+            return None;
         }
 
-        if self.normalization >= TrimEnd {
-            line.truncate(line.trim_end().len());
-        }
-
-        if self.normalization >= TypeDirBackslash {
-            if line
-                .trim_start()
-                .starts_with("= note: required because it appears within the type")
-            {
-                line = line.replace('\\', "/");
-            }
-        }
-
-        if self.normalization >= AndOthers {
-            let trim_start = line.trim_start();
-            if trim_start.starts_with("and ") && line.ends_with(" others") {
-                let indent = line.len() - trim_start.len();
-                let num_start = indent + "and ".len();
-                let num_end = line.len() - " others".len();
-                if num_start < num_end
-                    && line[num_start..num_end].bytes().all(|b| b.is_ascii_digit())
-                {
-                    line.replace_range(num_start..num_end, "$N");
-                }
-            }
-        }
-
-        if self.normalization >= StripLongTypeNameFiles {
-            let trimmed_line = line.trim_start();
-            let trimmed_line = trimmed_line
-                .strip_prefix("= note: ")
-                .unwrap_or(trimmed_line);
-            if trimmed_line.starts_with("the full type name has been written to")
-                || trimmed_line.starts_with("the full name for the type has been written to")
-            {
-                return None;
-            }
-        }
-
-        if self.normalization >= AndOthersVerbose {
-            let trim_start = line.trim_start();
-            if trim_start.starts_with("= help: the following types implement trait ")
-                || trim_start.starts_with("= help: the following other types implement trait ")
-            {
-                self.other_types = Some(0);
-            } else if let Some(count_other_types) = &mut self.other_types {
-                if indent >= 12 && trim_start != "and $N others" {
-                    *count_other_types += 1;
-                    if *count_other_types == 9 {
-                        if let Some(next) = self.all_lines.get(index + 1) {
-                            let next_trim_start = next.trim_start();
-                            let next_indent = next.len() - next_trim_start.len();
-                            if indent == next_indent {
-                                line.replace_range(indent - 2.., "and $N others");
-                            }
+        let trim_start = line.trim_start();
+        if trim_start.starts_with("= help: the following types implement trait ")
+            || trim_start.starts_with("= help: the following other types implement trait ")
+        {
+            self.other_types = Some(0);
+        } else if let Some(count_other_types) = &mut self.other_types {
+            if indent >= 12 && trim_start != "and $N others" {
+                *count_other_types += 1;
+                if *count_other_types == 9 {
+                    if let Some(next) = self.all_lines.get(index + 1) {
+                        let next_trim_start = next.trim_start();
+                        let next_indent = next.len() - next_trim_start.len();
+                        if indent == next_indent {
+                            line.replace_range(indent - 2.., "and $N others");
                         }
-                    } else if *count_other_types > 9 {
-                        return None;
                     }
-                } else {
-                    self.other_types = None;
+                } else if *count_other_types > 9 {
+                    return None;
                 }
+            } else {
+                self.other_types = None;
             }
         }
 
-        line = line.replace(self.context.krate, "$CRATE");
-        line = replace_case_insensitive(&line, &self.context.source_dir.to_string_lossy(), "$DIR/");
+        line = line.replace(&self.context.krate, "$CRATE");
         line = replace_case_insensitive(
             &line,
-            &self.context.workspace.to_string_lossy(),
-            "$WORKSPACE/",
+            &self.context.input_file_pat,
+            &self.context.replaced_path,
         );
+        line = replace_case_insensitive(&line, &self.context.workspace_pat, "$WORKSPACE/");
 
         Some(line)
     }
+}
+
+fn path_to_pat(path: &Path) -> String {
+    path.to_string_lossy()
+        .to_ascii_lowercase()
+        .replace('\\', "/")
+}
+
+fn dir_to_pat(path: &Path) -> String {
+    let mut pat = path_to_pat(path);
+    if !pat.ends_with('/') {
+        pat.push('/');
+    }
+    pat
 }
 
 fn is_ascii_lowercase_hex(s: &str) -> bool {
@@ -518,171 +394,15 @@ fn replace_case_insensitive(line: &str, pattern: &str, replacement: &str) -> Str
         replaced.push_str(keep);
         pos += keep.len();
         insert_replacement = true;
-        if replaced.ends_with(|ch: char| ch.is_ascii_alphanumeric()) {
-            if let Some(ch) = line[pos..].chars().next() {
-                replaced.push(ch);
-                pos += ch.len_utf8();
-                split = line_lower[pos..].split(&pattern_lower);
-                insert_replacement = false;
-            }
+        if replaced.ends_with(|ch: char| ch.is_ascii_alphanumeric())
+            && let Some(ch) = line[pos..].chars().next()
+        {
+            replaced.push(ch);
+            pos += ch.len_utf8();
+            split = line_lower[pos..].split(&pattern_lower);
+            insert_replacement = false;
         }
     }
 
     replaced
-}
-
-#[derive(PartialEq)]
-enum IndentedLineKind {
-    // `error`
-    // `warning`
-    Heading,
-
-    // Contains max number of spaces that can be cut based on this line.
-    // `   --> foo` = 2
-    // `    | foo` = 3
-    // `   ::: foo` = 2
-    // `10  | foo` = 1
-    Code(usize),
-
-    // `note:`
-    // `...`
-    Note,
-
-    // Contains number of leading spaces.
-    Other(usize),
-}
-
-fn unindent(diag: String, normalization: Normalization) -> String {
-    if normalization < Unindent {
-        return diag;
-    }
-
-    let mut normalized = String::new();
-    let mut lines = diag.lines();
-
-    while let Some(line) = lines.next() {
-        normalized.push_str(line);
-        normalized.push('\n');
-
-        if indented_line_kind(line, true, &mut false, normalization) != IndentedLineKind::Heading {
-            continue;
-        }
-
-        let mut ahead = lines.clone();
-        let Some(next_line) = ahead.next() else {
-            continue;
-        };
-
-        if let IndentedLineKind::Code(indent) =
-            indented_line_kind(next_line, false, &mut false, normalization)
-        {
-            if next_line[indent + 1..].starts_with("--> ") {
-                let mut lines_in_block = 1;
-                let mut least_indent = indent;
-                let mut previous_line_is_note = false;
-                while let Some(line) = ahead.next() {
-                    match indented_line_kind(line, false, &mut previous_line_is_note, normalization)
-                    {
-                        IndentedLineKind::Heading => break,
-                        IndentedLineKind::Code(indent) => {
-                            lines_in_block += 1;
-                            least_indent = cmp::min(least_indent, indent);
-                        }
-                        IndentedLineKind::Note => lines_in_block += 1,
-                        IndentedLineKind::Other(spaces) => {
-                            if spaces > 10 {
-                                lines_in_block += 1;
-                            } else {
-                                break;
-                            }
-                        }
-                    }
-                }
-                previous_line_is_note = false;
-                for _ in 0..lines_in_block {
-                    let line = lines.next().unwrap();
-                    if let IndentedLineKind::Code(_) | IndentedLineKind::Other(_) =
-                        indented_line_kind(line, false, &mut previous_line_is_note, normalization)
-                    {
-                        let space = line.find(' ').unwrap();
-                        normalized.push_str(&line[..space]);
-                        normalized.push_str(&line[space + least_indent..]);
-                    } else {
-                        normalized.push_str(line);
-                    }
-                    normalized.push('\n');
-                }
-            }
-        }
-    }
-
-    normalized
-}
-
-fn indented_line_kind(
-    line: &str,
-    first_line_in_block: bool,
-    previous_line_is_note: &mut bool,
-    normalization: Normalization,
-) -> IndentedLineKind {
-    let previous_line_was_note = mem::replace(previous_line_is_note, false);
-
-    if let Some(heading_len) = if line.starts_with("error") {
-        Some("error".len())
-    } else if line.starts_with("warning") {
-        Some("warning".len())
-    } else {
-        None
-    } {
-        if line[heading_len..].starts_with(&[':', '['][..]) {
-            return IndentedLineKind::Heading;
-        }
-    }
-
-    if first_line_in_block && normalization >= HeadingNote && line.starts_with("note: ") {
-        return IndentedLineKind::Heading;
-    }
-
-    if line.starts_with("note:")
-        || line == "..."
-        || normalization >= UnindentAfterHelp && line.starts_with("help:")
-        || normalization >= UnindentMultilineNote
-            && previous_line_was_note
-            && line.starts_with("      ")
-    {
-        *previous_line_is_note = true;
-        return IndentedLineKind::Note;
-    }
-
-    let is_space = |b: &u8| *b == b' ';
-    if let Some(rest) = line.strip_prefix("... ") {
-        let spaces = rest.bytes().take_while(is_space).count();
-        return IndentedLineKind::Code(spaces);
-    }
-
-    let mut spaces = line.bytes().take_while(is_space).count();
-    let digits = line[spaces..]
-        .bytes()
-        .take_while(u8::is_ascii_digit)
-        .count();
-    spaces += line[spaces + digits..].bytes().take_while(is_space).count();
-    let rest = &line[digits + spaces..];
-    if spaces > 0
-        && (rest == "|"
-            || rest.starts_with("| ")
-            || normalization >= UnindentSuggestion
-                && digits > 0
-                && (rest == "~"
-                    || rest.starts_with("~ ")
-                    || rest == "+"
-                    || rest.starts_with("+ ")
-                    || rest == "-"
-                    || rest.starts_with("- "))
-            || digits == 0
-                && (rest.starts_with("--> ") || rest.starts_with("::: ") || rest.starts_with("= ")))
-    {
-        return IndentedLineKind::Code(spaces - 1);
-    }
-
-    IndentedLineKind::Other(if digits == 0 { spaces } else { 0 })
 }

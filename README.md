@@ -1,261 +1,272 @@
-Trybuild
-========
+# Error Span Checker
 
-[<img alt="github" src="https://img.shields.io/badge/github-dtolnay/trybuild-8da0cb?style=for-the-badge&labelColor=555555&logo=github" height="20">](https://github.com/dtolnay/trybuild)
-[<img alt="crates.io" src="https://img.shields.io/crates/v/trybuild.svg?style=for-the-badge&color=fc8d62&logo=rust" height="20">](https://crates.io/crates/trybuild)
-[<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-trybuild-66c2a5?style=for-the-badge&labelColor=555555&logo=docs.rs" height="20">](https://docs.rs/trybuild)
-[<img alt="build status" src="https://img.shields.io/github/actions/workflow/status/dtolnay/trybuild/ci.yml?branch=master&style=for-the-badge" height="20">](https://github.com/dtolnay/trybuild/actions?query=branch%3Amaster)
+[![Tests](https://github.com/mich101mich/err_span_check/actions/workflows/test.yml/badge.svg)](https://github.com/mich101mich/err_span_check/actions/workflows/test.yml)
+[![Crates.io](https://img.shields.io/crates/v/err_span_check.svg)](https://crates.io/crates/err_span_check)
+[![Documentation](https://docs.rs/err_span_check/badge.svg)](https://docs.rs/err_span_check/)
+[![Dependency status](https://deps.rs/repo/github/mich101mich/err_span_check/status.svg)](https://deps.rs/repo/github/mich101mich/err_span_check)
 
-Trybuild is a test harness for invoking rustc on a set of test cases and
-asserting that any resulting error messages are the ones intended.
+A test harness for checking and comparing compiler errors with a focus on error spans. Useful mainly for procedural
+macros, but can also be used in other contexts.
 
-<p align="center">
-<a href="#compile-fail-tests">
-<img src="https://user-images.githubusercontent.com/1940490/57186574-76469e00-6e96-11e9-8cb5-b63b657170c9.png" width="600">
-</a>
-</p>
+This crate is a fork of [trybuild] with in-file error message syntax rather than separate `.stderr` files. It also has
+a more specialized and rigid workflow, so if any part of this process does not fit your project, please check out the
+more general-purpose [trybuild] instead.
 
-Such tests are commonly useful for testing error reporting involving procedural
-macros. We would write test cases triggering either errors detected by the macro
-or errors detected by the Rust compiler in the resulting expanded code, and
-compare against the expected errors to ensure that they remain user-friendly.
+[trybuild]: https://crates.io/crates/trybuild
 
-This style of testing is sometimes called *ui tests* because they test aspects
-of the user's interaction with a library outside of what would be covered by
-ordinary API tests.
+## Goal
 
-Nothing here is specific to macros; trybuild would work equally well for testing
-misuse of non-macro APIs.
+The rust compiler produces some of the best error messages of any comparable tool in the industry. And when you create
+a [procedural macro], you are in a position where your errors are rendered as compiler errors. So as an author of
+a proc-macro, you might want to put extra effort into making your errors as helpful as possible.
 
-```toml
-[dev-dependencies]
-trybuild = "1.0"
-```
+This can pose a serious challenge though, as proc-macro development is fairly niche and many of the required tools are
+still waiting for stabilization (see [1], [2]). One of the core challenges is setting [`Span`]s correctly, a.k.a. the
+region of the source code that is underlined by the error. This crate provides a simple way to verify that your
+macro underlines the correct part of the code with its errors.
 
-<br>
-
-## Compile-fail tests
-
-A minimal trybuild setup looks like this:
-
-```rust
-#[test]
-fn ui() {
-    let t = trybuild::TestCases::new();
-    t.compile_fail("tests/ui/*.rs");
-}
-```
-
-The test can be run with `cargo test`. It will individually compile each of the
-source files matching the glob pattern, expect them to fail to compile, and
-assert that the compiler's error message matches an adjacently named _*.stderr_
-file containing the expected output (same file name as the test except with a
-different extension). If it matches, the test case is considered to succeed.
-
-Dependencies listed under `[dev-dependencies]` in the project's Cargo.toml are
-accessible from within the test cases.
-
-Failing tests display the expected vs actual compiler output inline.
-
-<p align="center">
-<a href="#compile-fail-tests">
-<img src="https://user-images.githubusercontent.com/1940490/57186575-79418e80-6e96-11e9-9478-c9b3dc10327f.png" width="600">
-</a>
-</p>
-
-A compile\_fail test that fails to fail to compile is also a failure.
-
-<p align="center">
-<a href="#compile-fail-tests">
-<img src="https://user-images.githubusercontent.com/1940490/57186576-7b0b5200-6e96-11e9-8bfd-2de705125108.png" width="600">
-</a>
-</p>
-
-To test just one source file, use:
-```
-cargo test -- ui trybuild=example.rs
-```
-where `ui` is the name of the `#[test]` function that invokes `trybuild`, and
-`example.rs` is the name of the file to test.
-
-<br>
-
-## Pass tests
-
-The same test harness is able to run tests that are expected to pass, too.
-Ordinarily you would just have Cargo run such tests directly, but being able to
-combine modes like this could be useful for workshops in which participants work
-through test cases enabling one at a time. Trybuild was originally developed for
-my [procedural macros workshop at Rust Latam][workshop].
-
-[workshop]: https://github.com/dtolnay/proc-macro-workshop
-
-```rust
-#[test]
-fn ui() {
-    let t = trybuild::TestCases::new();
-    t.pass("tests/01-parse-header.rs");
-    t.pass("tests/02-parse-body.rs");
-    t.compile_fail("tests/03-expand-four-errors.rs");
-    t.pass("tests/04-paste-ident.rs");
-    t.pass("tests/05-repeat-section.rs");
-    //t.pass("tests/06-make-work-in-function.rs");
-    //t.pass("tests/07-init-array.rs");
-    //t.compile_fail("tests/08-ident-span.rs");
-}
-```
-
-Pass tests are considered to succeed if they compile successfully and have a
-`main` function that does not panic when the compiled binary is executed.
-
-<p align="center">
-<a href="#pass-tests">
-<img src="https://user-images.githubusercontent.com/1940490/57186580-7f376f80-6e96-11e9-9cae-8257609269ef.png" width="600">
-</a>
-</p>
-
-<br>
-
-## Details
-
-That's the entire API.
-
-<br>
+[procedural macro]: https://doc.rust-lang.org/stable/book/ch20-05-macros.html
+[1]: https://github.com/rust-lang/rust/issues/54725
+[2]: https://github.com/rust-lang/rust/issues/54140
+[`Span`]: https://doc.rust-lang.org/proc_macro/struct.Span.html
 
 ## Workflow
 
-There are two ways to update the _*.stderr_ files as you iterate on your test
-cases or your library; handwriting them is not recommended.
+ 1. Have a Project where you want to check compiler errors
+ 2. Create (minimal) code that produces the desired compiler error
 
-First, if a test case is being run as compile\_fail but a corresponding
-_*.stderr_ file does not exist, the test runner will save the actual compiler
-output with the right filename into a directory called *wip* within the
-directory containing Cargo.toml. So you can update these files by deleting them,
-running `cargo test`, and moving all the files from *wip* into your testcase
-directory.
+    This code should be placed in a `.rs` file somewhere within the `tests/fail` directory
 
-<p align="center">
-<a href="#workflow">
-<img src="https://user-images.githubusercontent.com/1940490/57186579-7cd51580-6e96-11e9-9f19-54dcecc9fbba.png" width="600">
-</a>
-</p>
+    Example (see [example] directory for full code):
 
-Alternatively, run `cargo test` with the environment variable
-`TRYBUILD=overwrite` to skip the *wip* directory and write all compiler output
-directly in place. You'll want to check `git diff` afterward to be sure the
-compiler's output is what you had in mind.
+    `tests/fail/missing_parameters.rs`
 
-<br>
+    ```rust
+    fn main() {
+        my_crate::my_string_checker!(usize); // passing a type to a macro that requires a string
+    }
+    ```
 
-## What to test
+ 3. Declare and name the test cases within the code
 
-When it comes to compile-fail tests, write tests for anything for which you care
-to find out when there are changes in the user-facing compiler output. As a
-negative example, please don't write compile-fail tests simply calling all of
-your public APIs with arguments of the wrong type; there would be no benefit.
+    ```rust
+    ////////// wrong parameter //////////
+    fn main() {
+        my_crate::my_string_checker!(usize);
+    }
+    ```
 
-A common use would be for testing specific targeted error messages emitted by a
-procedural macro. For example the derive macro from the [`ref-cast`] crate is
-required to be placed on a type that has either `#[repr(C)]` or
-`#[repr(transparent)]` in order for the expansion to be free of undefined
-behavior, which it enforces at compile time:
+    Each test case has to start with at least 5 `/////`, followed by some text to name the test case.
 
-[`ref-cast`]: https://github.com/dtolnay/ref-cast
+ 4. (Optional): Add more test cases
 
-```console
-error: RefCast trait requires #[repr(C)] or #[repr(transparent)]
- --> $DIR/missing-repr.rs:3:10
-  |
-3 | #[derive(RefCast)]
-  |          ^^^^^^^
+    ```rust
+    use my_crate::my_string_checker;
+    fn main() {
+        ////////// wrong parameter //////////
+        my_string_checker!(usize);
+
+        ////////// no parameters //////////
+        my_string_checker!();
+
+        ////////////////////////////////////////
+    }
+    ```
+
+    A test case ends at the start of the next test case or a line consisting of only `/////`...
+
+    Any code outside of a test case is shared between all test cases in the file. Note that test cases can't "see"
+    each other.
+
+ 5. Stage/commit your changes
+
+    **Note: This crate requires tracking your tests with git!**
+
+    All test cases (aka the contents of the `tests/fail` dir) have to be at least staged in git. Otherwise, they won't
+    be tested.
+
+    ```sh
+    git add tests/fail
+    ```
+
+    This step is necessary because there is little value in trying to compare large blocks of compiler errors in the
+    console. Instead, this crate overwrites the test files with the correct error annotations, and you can use the git
+    diff viewer of your choice to inspect and accept/undo the changes.
+
+ 6. Run the tests
+
+    Add `err_span_check` to your **dev**-dependencies.
+
+    ```sh
+    cargo add --dev err_span_check
+    ```
+
+    Place the following test somewhere within your code or regular rust test files:
+
+    ```rust
+    #[test]
+    fn compile_error_tests() {
+        err_span_check::run_on_fail_dir();
+    }
+    ```
+
+    Then run
+
+    ```sh
+    cargo test
+    ```
+
+ 7. Inspect the error annotations
+
+    Running the tests will overwrite the file to look something like this:
+
+    ```rust
+    use my_crate::my_string_checker;
+    fn main() {
+        ////////// wrong parameter //////////
+        my_string_checker!(usize);
+        //~                ^^^^^ expected string literal
+
+        ////////// no parameters //////////
+        my_string_checker!();
+
+        //~~~~~~~~~~~~~~~~~~~~ errors ~~~~~~~~~~~~~~~~~~~~//
+
+        // error: macro `my_string_checker` requires a string literal as parameter
+        //  --> missing_parameters.rs:5:5
+        //   |
+        // 5 |     my_string_checker!();
+        //   |     ^^^^^^^^^^^^^^^^^^^^
+        //   |
+        //   = note: this error originates in the macro `my_string_checker` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+        ////////////////////////////////////////
+    }
+    ```
+
+    The errors are placed in the line(s) below their occurrence if possible, using a line starting with `//~`.\
+    If the error does not fit, it is instead placed in a separate `errors` block containing the full (normalized to
+    somewhat resist compiler version changes) output of the compiler.
+
+[example]: https://github.com/mich101mich/err_span_check/tree/master/example
+
+## Specification
+
+### Project Structure
+
+- There must be a directory named `fail` within the project's `tests` folder.
+  - The `tests` folder must be adjacent to the `Cargo.toml` as per cargo's specification.
+- There must be a git repository set up at some level above the `fail` folder.\
+  (using the project or workspace root as the repo root is recommended)
+- Within the `fail` folder there can be any number and depth of subfolders.
+- Subfolders named `stable` or `nightly` indicate that the tests within them should only be run on the corresponding
+  toolchain.
+  - **NOTE**: err_span_check ensures that stable and nightly use the same tests by always copying them from the
+    `stable` directories!\
+    When you want to update the tests, update them in the `stable` folder and then run nightly tests
+    (`cargo +nightly test`) to update the nightly tests.
+
+### Test Files
+
+- Any file under the `tests/fail` directory is counted as a test file.
+- Test files must have the `.rs` extension and a non-empty utf-8 filename.
+- Test files can contain arbitrary Rust code and any number of test cases.
+
+### Test Cases
+
+- Test files are scanned for lines starting with the special sequences `"/////"` and `//~`.\
+  The sequences can be indented with any number of [whitespace] (including none).
+- A test case starts with a line consisting of [whitespace], at least five `'/'` characters, a name, and optionally
+  more whitespace and `'/'` chars.\
+  Formally, they have to match the following regex: `^\s*/{5,}\s*(?<name>.*)\s*/*\s*$`\
+  (whitespace, 5+ slashes, whitespace, name, whitespace, slashes, whitespace)\
+  The extra steps are to allow padding the names and trailing slashes.\
+  Examples:
+
+  ```rust
+  // valid starts:
+  ///// a name /////
+  //////////////////////////////any number of slashes, nothing after it
+      ///// indentation /////
+  ///// /name/with/slash/ /////
+
+  // The above cases would be named "a name", "any number of slashes, nothing after it", "indentation", and "/name/with/slash/".
+
+  // invalid: Not enough slashes
+  /// a name ///
+  // invalid: No name
+  ////////////////////////////////////////
+  ```
+
+- A test case ends with the next line starting with at least `/////`.
+  - If that line contains another name, it also serves as the start of the next test case.
+  - Otherwise, it is just treated as the end of the current test case.
+- Any code outside of test cases is treated as setup code and shared between all test cases in the same file.
+- _Up to here is what the user needs to write. Everything else is added by running the tests and should not be written_
+  _by hand!_
+- Inline error annotations are lines starting with `//~`. They are ignored for the purposes of testing.
+  - Note that inline annotations might be placed within multiline strings or similar invalid contexts. This is ok since
+    those lines are fully removed when running the tests.
+- Full error annotations are placed in comments after `//~~~~~~~~~~~~~~~~~~~~ errors ~~~~~~~~~~~~~~~~~~~~//`.
+  - That line and everything after it is fully removed when running the tests.
+
+Take the following example from the [workflow](#workflow) chapter:
+
+```rust
+use my_crate::my_string_checker;
+fn main() {
+    ////////// wrong parameter //////////
+    my_string_checker!(usize);
+    //~                ^^^^^ expected string literal
+
+    ////////// no parameters //////////
+    my_string_checker!();
+
+    //~~~~~~~~~~~~~~~~~~~~ errors ~~~~~~~~~~~~~~~~~~~~//
+
+    // error: macro `my_string_checker` requires a string literal as parameter
+    //  --> missing_parameters.rs:5:5
+    //   |
+    // 5 |     my_string_checker!();
+    //   |     ^^^^^^^^^^^^^^^^^^^^
+    //   |
+    //   = note: this error originates in the macro `my_string_checker` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+    ////////////////////////////////////////
+}
 ```
 
-Macros that consume helper attributes will want to check that unrecognized
-content within those attributes is properly indicated to the caller. Is the
-error message correctly placed under the erroneous tokens, not on a useless
-call\_site span?
+This test file turns into the following test cases:
 
-```console
-error: unknown serde field attribute `qqq`
- --> $DIR/unknown-attribute.rs:5:13
-  |
-5 |     #[serde(qqq = "...")]
-  |             ^^^
+Name: "wrong parameter"\
+Tested code:
+
+```rust
+use my_crate::my_string_checker;
+fn main() {
+    my_string_checker!(usize);
+
+}
 ```
 
-Declarative macros can benefit from compile-fail tests too. The [`json!`] macro
-from serde\_json is just a great big macro\_rules macro but makes an effort to
-have error messages from broken JSON in the input always appear on the most
-appropriate token:
+Name: "no parameters"\
+Tested code:
 
-[`json!`]: https://docs.rs/serde_json/1.0/serde_json/macro.json.html
+```rust
+use my_crate::my_string_checker;
+fn main() {
+    my_string_checker!();
 
-```console
-error: no rules expected the token `,`
- --> $DIR/double-comma.rs:4:38
-  |
-4 |     println!("{}", json!({ "k": null,, }));
-  |                                      ^ no rules expected this token in macro call
+}
 ```
 
-Sometimes we may have a macro that expands successfully but we count on it to
-trigger particular compiler errors at some point beyond macro expansion. For
-example the [`readonly`] crate introduces struct fields that are public but
-readable only, even if the caller has a &mut reference to the surrounding
-struct. If someone writes to a readonly field, we need to be sure that it
-wouldn't compile:
+[whitespace]: https://doc.rust-lang.org/std/primitive.char.html#method.is_whitespace
 
-[`readonly`]: https://github.com/dtolnay/readonly
+### Environment Variables
 
-```console
-error[E0594]: cannot assign to data in a `&` reference
-  --> $DIR/write-a-readonly.rs:17:26
-   |
-17 |     println!("{}", s.n); s.n += 1;
-   |                          ^^^^^^^^ cannot assign
-```
+- `ERR_SPAN_CHECK` can be set to the value `frozen` to have the tests fail with their expected output rather than
+  updating the local files. This is useful for CI and similar contexts.
 
-In all of these cases, the compiler's output can change because our crate or one
-of our dependencies broke something, or as a consequence of changes in the Rust
-compiler. Both are good reasons to have well conceived compile-fail tests. If we
-refactor and mistakenly cause an error that used to be correct to now no longer
-be emitted or be emitted in the wrong place, that is important for a test suite
-to catch. If the compiler changes something that makes error messages that we
-care about substantially worse, it is also important to catch and report as a
-compiler issue.
-
-<br>
-
-## Troubleshooting
-
-The Rust compiler's diagnostic output can vary as a function of whether the
-`rust-src` Rustup component is installed. The compiler will render source
-snippets from the standard library if the standard library source is available
-locally, and will simply omit snippets if not. This can account for differences
-between CI and local development.
-
-If you have compile_fail tests pertaining to standard library traits or types,
-you can ensure a consistent environment by adding a rust-toolchain.toml file
-with the following content.
-
-```toml
-[toolchain]
-components = ["rust-src"]
-```
-
-<br>
-
-#### License
-
-<sup>
-Licensed under either of <a href="LICENSE-APACHE">Apache License, Version
-2.0</a> or <a href="LICENSE-MIT">MIT license</a> at your option.
-</sup>
-
-<br>
-
-<sub>
-Unless you explicitly state otherwise, any contribution intentionally submitted
-for inclusion in this crate by you, as defined in the Apache-2.0 license, shall
-be dual licensed as above, without any additional terms or conditions.
-</sub>
+## License
+Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or
+[MIT license](LICENSE-MIT) at your option.

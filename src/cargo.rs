@@ -1,36 +1,14 @@
-use crate::directory::Directory;
-use crate::error::{Error, Result};
-use crate::manifest::Name;
-use crate::run::Project;
-use crate::rustflags;
-use serde_derive::Deserialize;
-use std::fs::File;
-use std::path::PathBuf;
-use std::process::{Command, Output, Stdio};
-use std::{env, io, iter};
-use target_triple::TARGET;
+use crate::*;
 
-#[derive(Deserialize)]
-pub(crate) struct Metadata {
-    pub target_directory: Directory,
-    pub workspace_root: Directory,
-    pub packages: Vec<PackageMetadata>,
-}
+use std::{fs::File, process::Command};
 
-#[derive(Deserialize)]
-pub(crate) struct PackageMetadata {
-    pub name: String,
-    pub targets: Vec<BuildTarget>,
-    pub manifest_path: PathBuf,
-}
-
-#[derive(Deserialize)]
-pub(crate) struct BuildTarget {
-    pub crate_types: Vec<String>,
-}
+use cargo_metadata::{
+    Message,
+    diagnostic::{Diagnostic, DiagnosticLevel},
+};
 
 fn raw_cargo() -> Command {
-    match env::var_os("CARGO") {
+    match std::env::var_os("CARGO") {
         Some(cargo) => Command::new(cargo),
         None => Command::new("cargo"),
     }
@@ -39,50 +17,53 @@ fn raw_cargo() -> Command {
 fn cargo(project: &Project) -> Command {
     let mut cmd = raw_cargo();
     cmd.current_dir(&project.dir);
-    cmd.envs(cargo_target_dir(project));
     cmd.env_remove("RUSTFLAGS");
+    cmd.env(
+        "CARGO_TARGET_DIR",
+        project.target_dir.join("tests").join("err_span_check"),
+    );
     cmd.env("CARGO_INCREMENTAL", "0");
     cmd.arg("--offline");
 
     let rustflags = rustflags::toml();
     cmd.arg(format!("--config=build.rustflags={rustflags}"));
-    cmd.arg(format!("--config=target.{TARGET}.rustflags={rustflags}"));
+    cmd.arg(format!(
+        "--config=target.{}.rustflags={rustflags}",
+        target_triple::TARGET
+    ));
 
     cmd
 }
 
-fn cargo_target_dir(project: &Project) -> impl Iterator<Item = (&'static str, PathBuf)> {
-    iter::once((
-        "CARGO_TARGET_DIR",
-        path!(project.target_dir / "tests" / "trybuild"),
-    ))
-}
-
-pub(crate) fn manifest_dir() -> Result<Directory> {
-    if let Some(manifest_dir) = env::var_os("CARGO_MANIFEST_DIR") {
-        return Ok(Directory::from(manifest_dir));
+pub(crate) fn manifest_dir() -> Result<PathBuf> {
+    if let Some(manifest_dir) = std::env::var_os("CARGO_MANIFEST_DIR") {
+        return PathBuf::from(manifest_dir)
+            .canonicalize()
+            .context("failed to canonicalize CARGO_MANIFEST_DIR");
     }
-    let mut dir = Directory::current()?;
-    loop {
+    let current_dir = std::env::current_dir().context("failed to get current directory")?;
+    for dir in current_dir.ancestors() {
         if dir.join("Cargo.toml").exists() {
-            return Ok(dir);
+            return dir
+                .canonicalize()
+                .context("failed to canonicalize std::env::current_dir()");
         }
-        dir = dir.parent().ok_or(Error::ProjectDir)?;
     }
+    bail!("failed to determine name of project dir")
 }
 
 pub(crate) fn build_dependencies(project: &mut Project) -> Result<()> {
     // Try copying or generating lockfile.
-    match File::open(path!(project.workspace / "Cargo.lock")) {
+    match File::open(project.workspace.join("Cargo.lock")) {
         Ok(mut workspace_cargo_lock) => {
-            if let Ok(mut new_cargo_lock) = File::create(path!(project.dir / "Cargo.lock")) {
+            if let Ok(mut new_cargo_lock) = File::create(project.dir.join("Cargo.lock")) {
                 // Not fs::copy in order to avoid producing a read-only destination
                 // file if the source file happens to be read-only.
-                let _ = io::copy(&mut workspace_cargo_lock, &mut new_cargo_lock);
+                let _ = std::io::copy(&mut workspace_cargo_lock, &mut new_cargo_lock);
             }
         }
         Err(err) => {
-            if err.kind() == io::ErrorKind::NotFound {
+            if err.kind() == std::io::ErrorKind::NotFound {
                 let _ = cargo(project).arg("generate-lockfile").status();
             }
         }
@@ -90,99 +71,47 @@ pub(crate) fn build_dependencies(project: &mut Project) -> Result<()> {
 
     let mut command = cargo(project);
     command
-        .arg(if project.has_pass { "build" } else { "check" })
+        .arg("check")
         .args(target())
         .arg("--bin")
         .arg(&project.name)
         .args(features(project));
 
-    let status = command.status().map_err(Error::Cargo)?;
+    let status = command.status().context("failed to execute cargo")?;
     if !status.success() {
-        return Err(Error::CargoFail);
+        bail!("cargo reported an error")
     }
-
-    // Check if this Cargo contains https://github.com/rust-lang/cargo/pull/10383
-    project.keep_going = command
-        .arg("--keep-going")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success());
 
     Ok(())
 }
 
-pub(crate) fn build_test(project: &Project, name: &Name) -> Result<Output> {
-    let _ = cargo(project)
-        .arg("clean")
-        .arg("--package")
-        .arg(&project.name)
-        .arg("--color=never")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
+pub(crate) fn check_tests(
+    project: &Project,
+    tests: &[&str],
+) -> Result<HashMap<PathBuf, Vec<Diagnostic>>> {
+    let mut cmd = cargo(project);
+    cmd.arg("check");
 
-    cargo(project)
-        .arg(if project.has_pass { "build" } else { "check" })
+    for test in tests {
+        cmd.arg("--test").arg(test);
+    }
+
+    cmd.args(features(project))
         .args(target())
-        .arg("--bin")
-        .arg(name)
-        .args(features(project))
-        .arg("--quiet")
-        .arg("--color=never")
-        .arg("--message-format=json")
-        .output()
-        .map_err(Error::Cargo)
-}
-
-pub(crate) fn build_all_tests(project: &Project) -> Result<Output> {
-    let _ = cargo(project)
-        .arg("clean")
-        .arg("--package")
-        .arg(&project.name)
-        .arg("--color=never")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status();
-
-    cargo(project)
-        .arg(if project.has_pass { "build" } else { "check" })
-        .args(target())
-        .arg("--bins")
-        .args(features(project))
         .arg("--quiet")
         .arg("--color=never")
         .arg("--message-format=json")
         .arg("--keep-going")
         .output()
-        .map_err(Error::Cargo)
+        .context("failed to execute cargo")
+        .map(|out| parse_cargo_json(&out.stdout))
 }
 
-pub(crate) fn run_test(project: &Project, name: &Name) -> Result<Output> {
-    cargo(project)
-        .arg("run")
-        .args(target())
-        .arg("--bin")
-        .arg(name)
-        .args(features(project))
-        .arg("--quiet")
-        .arg("--color=never")
-        .output()
-        .map_err(Error::Cargo)
-}
-
-pub(crate) fn metadata() -> Result<Metadata> {
-    let output = raw_cargo()
-        .arg("metadata")
-        .arg("--no-deps")
-        .arg("--format-version=1")
-        .output()
-        .map_err(Error::Cargo)?;
-
-    serde_json::from_slice(&output.stdout).map_err(|err| {
-        print!("{}", String::from_utf8_lossy(&output.stderr));
-        Error::Metadata(err)
-    })
+pub(crate) fn metadata() -> Result<cargo_metadata::Metadata> {
+    cargo_metadata::MetadataCommand::new()
+        .no_deps()
+        .exec()
+        .context("failed to get cargo metadata")
 }
 
 fn features(project: &Project) -> Vec<String> {
@@ -197,22 +126,44 @@ fn features(project: &Project) -> Vec<String> {
 }
 
 fn target() -> Vec<&'static str> {
-    // When --target flag is passed, cargo does not pass RUSTFLAGS to rustc when
-    // building proc-macro and build script even if the host and target triples
-    // are the same. Therefore, if we always pass --target to cargo, tools such
-    // as coverage that require RUSTFLAGS do not work for tests run by trybuild.
-    //
-    // To avoid that problem, do not pass --target to cargo if we know that it
-    // has not been passed.
-    //
-    // Currently, cargo does not have a way to tell the build script whether
-    // --target has been passed or not, and there is no heuristic that can
-    // handle this well.
-    //
-    // Therefore, expose a cfg to always treat the target as host.
-    if cfg!(trybuild_no_target) {
-        vec![]
-    } else {
-        vec!["--target", TARGET]
+    vec!["--target", target_triple::TARGET]
+}
+
+pub(crate) fn parse_cargo_json(stdout: &[u8]) -> HashMap<PathBuf, Vec<Diagnostic>> {
+    let mut stderrs = HashMap::<PathBuf, Vec<Diagnostic>>::new();
+    let mut seen = HashSet::new();
+
+    for message in Message::parse_stream(stdout) {
+        // unwrap: only fails if read failed, but we have all data in memory
+        let msg = match message.unwrap() {
+            Message::CompilerMessage(msg) => msg,
+            Message::TextLine(text) => {
+                println!("{text}");
+                continue;
+            }
+            _ => continue, // Don't care about other messages
+        };
+
+        if msg.message.level != DiagnosticLevel::Error {
+            continue;
+        }
+
+        if seen.contains(&msg) {
+            // Discard duplicate messages. This might no longer be necessary
+            // after https://github.com/rust-lang/rust/issues/106571 is fixed.
+            // Normally rustc would filter duplicates itself and I think this is
+            // a short-lived bug.
+            continue;
+        }
+        seen.insert(msg.clone());
+
+        let src_path = &msg.target.src_path;
+        let src_path = src_path
+            .canonicalize()
+            .unwrap_or_else(|_| src_path.as_std_path().to_owned());
+
+        stderrs.entry(src_path).or_default().push(msg.message);
     }
+
+    stderrs
 }
