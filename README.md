@@ -187,9 +187,10 @@ macro underlines the correct part of the code with its errors.
   // valid starts:
   ///// a name /////
   //////////////////////////////any number of slashes, nothing after it
-  ///// name with slash/ /////
+      ///// indentation /////
+  ///// /name/with/slash/ /////
 
-  // The above cases would be named "a name", "any number of slashes, nothing after it", and "name with slash/".
+  // The above cases would be named "a name", "any number of slashes, nothing after it", "indentation", and "/name/with/slash/".
 
   // invalid: Not enough slashes
   /// a name ///

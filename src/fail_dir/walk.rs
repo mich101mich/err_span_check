@@ -478,14 +478,14 @@ mod tests {
             assert_eq!(a.path, p("/fail/a.rs"));
             assert_eq!(a.relative_path, p("a.rs"));
             assert_eq!(a.original_content, "///// test\ntest content");
-            assert!(!a.blocks.is_empty());
+            assert!(!a.tests.is_empty());
             assert!(!a.has_error());
 
             let b = iter.next().unwrap();
             assert_eq!(b.path, p("/fail/b.rs"));
             assert_eq!(b.relative_path, p("b.rs"));
             assert_eq!(b.original_content, ""); // empty due to error
-            assert!(b.blocks.is_empty()); // no blocks due to error
+            assert!(b.tests.is_empty()); // no tests due to error
             assert!(b.git_status.is_ok());
             assert_eq!(
                 b.error.unwrap().to_string(),
@@ -496,7 +496,7 @@ mod tests {
             assert_eq!(c.path, p("/fail/stable/c.rs"));
             assert_eq!(c.relative_path, p("stable/c.rs"));
             assert_eq!(c.original_content, "///// test\nmore content");
-            assert!(!c.blocks.is_empty());
+            assert!(!c.tests.is_empty());
             assert_eq!(c.git_status.unwrap_err().to_string(), "git error");
             assert!(c.error.is_none());
 
@@ -504,14 +504,14 @@ mod tests {
             assert_eq!(d.path, p("/fail/stable/inner/d.rs"));
             assert_eq!(d.relative_path, p("stable/inner/d.rs"));
             assert_eq!(d.original_content, "///// test\ninner content");
-            assert!(!d.blocks.is_empty());
+            assert!(!d.tests.is_empty());
             assert!(!d.has_error());
 
             let e = iter.next().unwrap();
             assert_eq!(e.path, p("/fail/other/e.rs"));
             assert_eq!(e.relative_path, p("other/e.rs"));
             assert_eq!(e.original_content, "///// test\nother content");
-            assert!(!e.blocks.is_empty());
+            assert!(!e.tests.is_empty());
             assert!(!e.has_error());
 
             assert!(iter.next().is_none());
@@ -527,14 +527,14 @@ mod tests {
             assert_eq!(a.path, p("/fail/a.rs"));
             assert_eq!(a.relative_path, p("a.rs"));
             assert_eq!(a.original_content, "///// test\ntest content");
-            assert!(!a.blocks.is_empty());
+            assert!(!a.tests.is_empty());
             assert!(!a.has_error());
 
             let b = iter.next().unwrap();
             assert_eq!(b.path, p("/fail/b.rs"));
             assert_eq!(b.relative_path, p("b.rs"));
             assert_eq!(b.original_content, ""); // empty due to error
-            assert!(b.blocks.is_empty()); // no blocks due to error
+            assert!(b.tests.is_empty()); // no tests due to error
             assert!(b.git_status.is_ok());
             assert_eq!(
                 b.error.unwrap().to_string(),
@@ -545,21 +545,21 @@ mod tests {
             assert_eq!(c.path, p("/fail/nightly/c.rs"));
             assert_eq!(c.relative_path, p("nightly/c.rs"));
             assert_eq!(c.original_content, ""); // file did not exist before
-            assert!(!c.blocks.is_empty());
+            assert!(!c.tests.is_empty());
             assert!(!c.has_error());
 
             let d = iter.next().unwrap();
             assert_eq!(d.path, p("/fail/nightly/inner/d.rs"));
             assert_eq!(d.relative_path, p("nightly/inner/d.rs"));
             assert_eq!(d.original_content, ""); // file did not exist before
-            assert!(!d.blocks.is_empty());
+            assert!(!d.tests.is_empty());
             assert!(!d.has_error());
 
             let e = iter.next().unwrap();
             assert_eq!(e.path, p("/fail/other/e.rs"));
             assert_eq!(e.relative_path, p("other/e.rs"));
             assert_eq!(e.original_content, "///// test\nother content");
-            assert!(!e.blocks.is_empty());
+            assert!(!e.tests.is_empty());
             assert!(!e.has_error());
 
             assert!(iter.next().is_none());

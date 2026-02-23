@@ -16,7 +16,7 @@ note: `MyPhantom<u8>` defined here
 help: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern or an explicit pattern as shown
    |
 10 ~         MyPhantom => {},
-11 +         MyPhantom::__Phantom(_) => todo!()
+11 +         MyPhantom::__Phantom(_) => {}
    |
 " "
 error[E0004]: non-exhaustive patterns: `MyPhantom::__Phantom(_)` not covered
@@ -36,6 +36,6 @@ note: `MyPhantom<u8>` defined here
 help: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern or an explicit pattern as shown
    |
 10 ~         MyPhantom => {},
-11 +         MyPhantom::__Phantom(_) => todo!()
+11 +         MyPhantom::__Phantom(_) => {}
    |
 "}

@@ -14,13 +14,13 @@ pub(crate) fn find() -> Option<Vec<String>> {
     // The hash at the end is ascii so not lossy, rest of conversion doesn't
     // matter.
     let test_binary_lossy = test_binary.to_string_lossy();
-    let hash_range = if cfg!(windows) {
-        // Trim ".exe" from the binary name for windows.
-        test_binary_lossy.len() - 21..test_binary_lossy.len() - 4
-    } else {
-        test_binary_lossy.len() - 17..test_binary_lossy.len()
-    };
-    let hash = test_binary_lossy.get(hash_range)?;
+    let test_binary_lossy = test_binary_lossy
+        .strip_suffix(".exe")
+        .unwrap_or(&test_binary_lossy);
+
+    // '-' + 16 hex digits
+    let dash_pos = test_binary_lossy.len().checked_sub(17)?;
+    let hash = &test_binary_lossy[dash_pos..];
     if !hash.starts_with('-') || !hash[1..].bytes().all(is_lower_hex_digit) {
         return None;
     }

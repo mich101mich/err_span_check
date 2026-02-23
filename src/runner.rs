@@ -41,11 +41,8 @@ pub(crate) fn run() -> Result<()> {
             continue;
         }
 
-        for block in &file.blocks {
-            let fail_dir::Block::TestCase { test_case, .. } = block else {
-                continue;
-            };
-            let test_file_path = tests_dir.join(&test_case.filename);
+        for test_case in &file.tests {
+            let test_file_path = tests_dir.join(test_case.filename());
 
             // Only write if content has changed
             let current_content = std::fs::read(&test_file_path).ok();
@@ -79,27 +76,7 @@ pub(crate) fn run() -> Result<()> {
             continue;
         }
 
-        let mut new_file_content = String::new();
-        let mut last_was_test_case = false;
-        for block in &file.blocks {
-            let test = match block {
-                fail_dir::Block::TestCase { test_case, .. } => test_case,
-                fail_dir::Block::Code(range) => {
-                    last_was_test_case = false;
-                    for line in &file.setup_code[range.clone()] {
-                        new_file_content.push_str(line);
-                        new_file_content.push('\n');
-                    }
-                    continue;
-                }
-            };
-
-            if last_was_test_case {
-                new_file_content.push('\n');
-            }
-
-            last_was_test_case = true;
-
+        let new_file_content = file.process_tests(|test| {
             message::begin_test(
                 &test.display_name,
                 &file.relative_path,
@@ -107,7 +84,7 @@ pub(crate) fn run() -> Result<()> {
             );
             total += 1;
 
-            let local_path = PathBuf::from("tests").join(&test.filename);
+            let local_path = PathBuf::from("tests").join(test.filename());
             let full_path = project.dir.join(&local_path);
             let full_path = full_path.canonicalize().unwrap_or(full_path);
 
@@ -116,8 +93,7 @@ pub(crate) fn run() -> Result<()> {
             if test_output.is_empty() {
                 message::should_not_have_compiled();
                 failed += 1;
-                new_file_content.push_str(&test.expected);
-                continue;
+                return fail_dir::RunResult::UseExpected;
             }
 
             let normalize = normalize::Normalizer::new(&project, &local_path, &file.relative_path);
@@ -132,8 +108,8 @@ pub(crate) fn run() -> Result<()> {
                 message::mismatch(&test.expected, &actual);
                 failed += 1;
             }
-            new_file_content.push_str(&actual);
-        }
+            fail_dir::RunResult::Update { actual }
+        });
 
         if project.should_update && new_file_content != file.original_content {
             file.write(new_file_content)?;
