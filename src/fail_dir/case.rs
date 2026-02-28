@@ -477,6 +477,7 @@ fn foo() {
         // Dummy project for normalizer
         let project = Project {
             dir: PathBuf::from("."),
+            owned_dir: PathBuf::from("."),
             target_dir: PathBuf::from("target"),
             name: "test_crate".into(),
             should_update: false,
