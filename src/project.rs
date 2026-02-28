@@ -6,6 +6,7 @@ use crate::{
 #[derive(Debug)]
 pub(crate) struct Project {
     pub dir: PathBuf,
+    pub owned_dir: PathBuf,
     pub target_dir: PathBuf,
     pub name: String,
     pub should_update: bool,
@@ -52,10 +53,11 @@ impl Project {
             .collect();
 
         let crate_name = &source_manifest.package.name;
-        let project_dir = target_directory
-            .join("tests")
-            .join("err_span_check")
-            .join(crate_name);
+        // A directory that we can use for our output.
+        // Note: This directory is technically owned by trybuild. However, we have to use this exact path because
+        //       other crates like llvm-cov have hardcoded workarounds for trybuild using this path.
+        let owned_dir = target_directory.join("tests").join("trybuild");
+        let project_dir = owned_dir.join(crate_name);
         std::fs::create_dir_all(&project_dir).context("failed to create project directory")?;
 
         let project_name = format!("{}-tests", crate_name);
@@ -84,6 +86,7 @@ impl Project {
 
         let mut project = Project {
             dir: project_dir.into_std_path_buf(),
+            owned_dir: owned_dir.into_std_path_buf(),
             target_dir: target_directory.into_std_path_buf(),
             name: project_name,
             should_update: util::env::should_update()?,

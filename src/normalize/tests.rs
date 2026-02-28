@@ -23,6 +23,7 @@ macro_rules! test_normalize {
             use std::path::PathBuf;
             let project = crate::Project {
                 dir: PathBuf::new(),
+                owned_dir: PathBuf::new(),
                 target_dir: PathBuf::from(unwrap_or!($($target)?, "/git/err_span_check/target")),
                 name: "err_span_check000".to_string(),
                 should_update: false,
