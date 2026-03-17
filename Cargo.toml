@@ -26,6 +26,7 @@ members = ["example"]
 [dependencies]
 anyhow = "1.0.39"
 cargo_metadata = "0.23.0"
+fs-err = { version = "3.2.0", features = ["debug"] }
 git2 = { version = "0.20.0", default-features = false }
 rustc_version = "0.4.0"
 serde = { version = "1.0.0", features = ["derive"] }

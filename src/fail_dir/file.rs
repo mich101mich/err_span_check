@@ -176,19 +176,14 @@ impl TestFile {
     }
 
     pub(crate) fn write(&self, new_file_content: String) -> Result<(), Error> {
-        let parent_dir = self.path.parent().path_context(
-            &self.relative_path,
-            "Failed to get parent directory for test file: <path>",
-        )?;
-        std::fs::create_dir_all(parent_dir).path_context(
-            &self.relative_path,
-            "Failed to create directories for test file: <path>",
-        )?;
+        if let Some(parent_dir) = self.path.parent() {
+            fs_err::create_dir_all(parent_dir)
+                .context("Failed to create directories for test file")?;
+        }
+        // It is pretty much guaranteed that the path will have a parent, so the `else` branch here should be an error,
+        // but that seems a bit extreme. fs_err::write will probably have more info in it error.
 
-        std::fs::write(&self.path, new_file_content).path_context(
-            &self.relative_path,
-            "Failed to write updated test file: <path>",
-        )?;
+        fs_err::write(&self.path, new_file_content).context("Failed to write updated test file")?;
         Ok(())
     }
 }

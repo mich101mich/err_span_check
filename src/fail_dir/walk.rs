@@ -89,10 +89,8 @@ impl Directory {
         let mut files = BTreeMap::new();
         let mut subdirs = BTreeMap::new();
 
-        for entry in
-            std::fs::read_dir(&dir).path_context(&dir, "failed to read directory: <path>")?
-        {
-            let entry = entry.path_context(&dir, "failed to read directory entry in <path>")?;
+        for entry in fs_err::read_dir(&dir)? {
+            let entry = entry?;
 
             let filename = entry.file_name();
             let path = entry.path();
@@ -102,11 +100,13 @@ impl Directory {
                     .to_str()
                     .and_then(|f| f.strip_suffix(".rs"))
                     .filter(|stem| !stem.is_empty())
-                    .path_context(
-                        &dir,
-                        r#"Invalid filename: <path>. Expected "<valid-nonempty-utf8>.rs
+                    .with_context(|| {
+                        format!(
+                            r#"Invalid filename: {}. Expected "<valid-nonempty-utf8>.rs
 Note that the tests/fail directory is only allowed to contain compile-fail test files."#,
-                    )?;
+                            dir.display()
+                        )
+                    })?;
 
                 if stem == "main" && relative_dir.as_os_str().is_empty() {
                     bail!(
@@ -118,8 +118,7 @@ Please choose a different name for the test file: {}"#,
 
                 let path = path.canonicalize().unwrap_or_else(|_| path.clone());
 
-                let content = std::fs::read_to_string(&path)
-                    .path_context(&path, "failed to read test file: <path>")?;
+                let content = fs_err::read_to_string(&path).context("failed to read test file")?;
                 let git_status = repo.is_clean(&path);
 
                 files.insert(

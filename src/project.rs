@@ -58,7 +58,7 @@ impl Project {
         //       other crates like llvm-cov have hardcoded workarounds for trybuild using this path.
         let owned_dir = target_directory.join("tests").join("trybuild");
         let project_dir = owned_dir.join(crate_name);
-        std::fs::create_dir_all(&project_dir).context("failed to create project directory")?;
+        fs_err::create_dir_all(&project_dir).context("failed to create project directory")?;
 
         let project_name = format!("{}-tests", crate_name);
         let manifest = Self::make_manifest(
@@ -75,14 +75,15 @@ impl Project {
 
         let manifest_toml =
             toml::to_string(&manifest).context("failed to serialize manifest to TOML")?;
-        std::fs::write(project_dir.join("Cargo.toml"), manifest_toml)
+        fs_err::write(project_dir.join("Cargo.toml"), manifest_toml)
             .context("failed to write Cargo.toml")?;
 
         let main_rs = b"\
             #![allow(unused_crate_dependencies, missing_docs)]\n\
             fn main() {}\n\
         ";
-        std::fs::write(project_dir.join("main.rs"), main_rs).context("failed to write main.rs")?;
+        fs_err::write(project_dir.join("main.rs"), main_rs)
+            .context("failed to write test setup")?;
 
         let mut project = Project {
             dir: project_dir.into_std_path_buf(),

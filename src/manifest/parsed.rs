@@ -8,11 +8,9 @@ use serde::de::{
 pub(crate) fn get_manifest(manifest_dir: &Path) -> Result<Manifest> {
     let cargo_toml_path = manifest_dir.join("Cargo.toml");
 
-    let manifest_str = std::fs::read_to_string(&cargo_toml_path)
-        .path_context(&cargo_toml_path, "failed to read manifest: <path>")?;
+    let manifest_str = fs_err::read_to_string(&cargo_toml_path).context("failed to read manifest")?;
 
-    let mut manifest: Manifest = toml::from_str(&manifest_str)
-        .path_context(&cargo_toml_path, "failed to parse manifest: <path>")?;
+    let mut manifest: Manifest = toml::from_str(&manifest_str).context("failed to parse manifest")?;
 
     fix_dependencies(&mut manifest.dependencies, manifest_dir);
     fix_dependencies(&mut manifest.dev_dependencies, manifest_dir);
@@ -30,7 +28,7 @@ pub(crate) fn get_workspace_manifest(manifest_dir: &Path) -> WorkspaceManifest {
 
 fn try_get_workspace_manifest(manifest_dir: &Path) -> Result<WorkspaceManifest> {
     let cargo_toml_path = manifest_dir.join("Cargo.toml");
-    let manifest_str = std::fs::read_to_string(cargo_toml_path)?;
+    let manifest_str = fs_err::read_to_string(cargo_toml_path)?;
     let mut manifest: WorkspaceManifest = toml::from_str(&manifest_str)?;
 
     fix_dependencies(&mut manifest.workspace.dependencies, manifest_dir);

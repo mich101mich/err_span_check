@@ -15,12 +15,8 @@ impl GitRepo {
             .context("failed to find git repository")?;
         let repo = Repository::open(&root).context("failed to open git repository")?;
 
-        let root = root
-            .parent()
-            .context(".git directory has no parent")?
-            .canonicalize()
-            .context("failed to canonicalize git repository root")?
-            .to_path_buf();
+        let root = fs_err::canonicalize(root.parent().context(".git directory has no parent")?)
+            .context("failed to canonicalize git repository root")?;
 
         Ok(Self { repo, root })
     }

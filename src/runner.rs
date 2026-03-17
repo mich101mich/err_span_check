@@ -32,7 +32,7 @@ pub(crate) fn run() -> Result<()> {
     print_col!("\n\n");
 
     let tests_dir = project.dir.join("tests");
-    std::fs::create_dir_all(&tests_dir).context("failed to create tests directory")?;
+    fs_err::create_dir_all(&tests_dir).context("failed to create tests directory")?;
 
     let mut active_test_files = vec![];
 
@@ -47,7 +47,7 @@ pub(crate) fn run() -> Result<()> {
             // Only write if content has changed
             let current_content = std::fs::read(&test_file_path).ok();
             if current_content.as_deref() != Some(test_case.source_code.as_bytes()) {
-                std::fs::write(&test_file_path, &test_case.source_code)
+                fs_err::write(&test_file_path, &test_case.source_code)
                     .context("failed to write test file")?;
             }
 

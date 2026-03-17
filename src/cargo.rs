@@ -1,6 +1,8 @@
 use crate::*;
 
-use std::{fs::File, process::Command};
+use std::process::Command;
+
+use fs_err::File;
 
 use cargo_metadata::{
     Message,
@@ -34,15 +36,13 @@ fn cargo(project: &Project) -> Command {
 
 pub(crate) fn manifest_dir() -> Result<PathBuf> {
     if let Some(manifest_dir) = std::env::var_os("CARGO_MANIFEST_DIR") {
-        return PathBuf::from(manifest_dir)
-            .canonicalize()
+        return fs_err::canonicalize(PathBuf::from(manifest_dir))
             .context("failed to canonicalize CARGO_MANIFEST_DIR");
     }
     let current_dir = std::env::current_dir().context("failed to get current directory")?;
     for dir in current_dir.ancestors() {
         if dir.join("Cargo.toml").exists() {
-            return dir
-                .canonicalize()
+            return fs_err::canonicalize(dir)
                 .context("failed to canonicalize std::env::current_dir()");
         }
     }
