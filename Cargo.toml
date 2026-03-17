@@ -1,6 +1,6 @@
 [package]
 name = "err_span_check"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["mich101mich <mich101mich@gmail.com>"]
 edition = "2024"
 rust-version = "1.88.0"
@@ -31,7 +31,6 @@ git2 = { version = "0.20.0", default-features = false }
 rustc_version = "0.4.0"
 serde = { version = "1.0.0", features = ["derive"] }
 serde_json = "1.0.0"
-target-triple = "1.0"
 termcolor = "1.0.0"
 toml = "1.0.0"
 unicode-width = { version = "0.2.0", default-features = false }

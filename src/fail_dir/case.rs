@@ -480,8 +480,6 @@ fn foo() {
             owned_dir: PathBuf::from("."),
             target_dir: PathBuf::from("target"),
             name: "test_crate".into(),
-            should_update: false,
-            features: None,
             workspace: PathBuf::from("."),
             path_dependencies: vec![],
         };

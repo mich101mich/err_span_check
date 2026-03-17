@@ -2,7 +2,7 @@ use crate::*;
 
 pub fn should_update() -> Result<bool> {
     let Some(var) = std::env::var_os("ERR_SPAN_CHECK") else {
-        return Ok(true);
+        return Ok(true); // update by default
     };
 
     match var.as_os_str().to_str() {

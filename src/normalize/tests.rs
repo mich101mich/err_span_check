@@ -26,8 +26,6 @@ macro_rules! test_normalize {
                 owned_dir: PathBuf::new(),
                 target_dir: PathBuf::from(unwrap_or!($($target)?, "/git/err_span_check/target")),
                 name: "err_span_check000".to_string(),
-                should_update: false,
-                features: None,
                 workspace: PathBuf::from(unwrap_or!($($workspace)?, "/git/err_span_check")),
                 path_dependencies: vec![crate::project::PathDependency {
                     name: "diesel".to_string(),

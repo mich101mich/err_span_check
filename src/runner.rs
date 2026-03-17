@@ -27,6 +27,8 @@ pub(crate) fn run() -> Result<()> {
         return Ok(());
     }
 
+    let should_update = env::should_update()?;
+
     let project = Project::prepare()?;
 
     print_col!("\n\n");
@@ -101,7 +103,7 @@ pub(crate) fn run() -> Result<()> {
             let actual = test.annotate_with(&test_output, &normalize);
             if test.expected == actual {
                 message::ok();
-            } else if project.should_update {
+            } else if should_update {
                 message::updated(&file.relative_path);
                 failed += 1;
             } else {
@@ -111,7 +113,7 @@ pub(crate) fn run() -> Result<()> {
             fail_dir::RunResult::Update { actual }
         });
 
-        if project.should_update && new_file_content != file.original_content {
+        if should_update && new_file_content != file.original_content {
             file.write(new_file_content)?;
         }
     }

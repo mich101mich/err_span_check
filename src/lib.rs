@@ -55,6 +55,7 @@
 mod message;
 
 mod cargo;
+mod env;
 mod fail_dir;
 mod git;
 mod manifest;
@@ -62,10 +63,6 @@ mod normalize;
 mod project;
 mod runner;
 mod rustflags;
-mod util {
-    pub(crate) mod env;
-    pub(crate) mod features;
-}
 
 pub(crate) use fail_dir::TestFile;
 pub(crate) use project::Project;

@@ -26,10 +26,6 @@ fn cargo(project: &Project) -> Command {
 
     let rustflags = rustflags::toml();
     cmd.arg(format!("--config=build.rustflags={rustflags}"));
-    cmd.arg(format!(
-        "--config=target.{}.rustflags={rustflags}",
-        target_triple::TARGET
-    ));
 
     cmd
 }
@@ -67,12 +63,7 @@ pub(crate) fn build_dependencies(project: &mut Project) -> Result<()> {
     }
 
     let mut command = cargo(project);
-    command
-        .arg("check")
-        .args(target())
-        .arg("--bin")
-        .arg(&project.name)
-        .args(features(project));
+    command.arg("check").arg("--bin").arg(&project.name);
 
     let status = command.status().context("failed to execute cargo")?;
     if !status.success() {
@@ -93,9 +84,7 @@ pub(crate) fn check_tests(
         cmd.arg("--test").arg(test);
     }
 
-    cmd.args(features(project))
-        .args(target())
-        .arg("--quiet")
+    cmd.arg("--quiet")
         .arg("--color=never")
         .arg("--message-format=json")
         .arg("--keep-going")
@@ -109,21 +98,6 @@ pub(crate) fn metadata() -> Result<cargo_metadata::Metadata> {
         .no_deps()
         .exec()
         .context("failed to get cargo metadata")
-}
-
-fn features(project: &Project) -> Vec<String> {
-    match &project.features {
-        Some(features) => vec![
-            "--no-default-features".to_owned(),
-            "--features".to_owned(),
-            features.join(","),
-        ],
-        None => vec![],
-    }
-}
-
-fn target() -> Vec<&'static str> {
-    vec!["--target", target_triple::TARGET]
 }
 
 pub(crate) fn parse_cargo_json(stdout: &[u8]) -> HashMap<PathBuf, Vec<Diagnostic>> {

@@ -9,8 +9,6 @@ pub(crate) struct Project {
     pub owned_dir: PathBuf,
     pub target_dir: PathBuf,
     pub name: String,
-    pub should_update: bool,
-    pub features: Option<Vec<String>>,
     pub workspace: PathBuf,
     pub path_dependencies: Vec<PathDependency>,
 }
@@ -32,8 +30,6 @@ impl Project {
 
         let source_dir = cargo::manifest_dir()?;
         let source_manifest = parsed::get_manifest(&source_dir)?;
-
-        let mut features = util::features::find();
 
         let path_dependencies = source_manifest
             .dependencies
@@ -69,10 +65,6 @@ impl Project {
             source_manifest,
         )?;
 
-        if let Some(enabled_features) = &mut features {
-            enabled_features.retain(|feature| manifest.features.contains_key(feature));
-        }
-
         let manifest_toml =
             toml::to_string(&manifest).context("failed to serialize manifest to TOML")?;
         fs_err::write(project_dir.join("Cargo.toml"), manifest_toml)
@@ -90,8 +82,6 @@ impl Project {
             owned_dir: owned_dir.into_std_path_buf(),
             target_dir: target_directory.into_std_path_buf(),
             name: project_name,
-            should_update: util::env::should_update()?,
-            features,
             workspace: workspace_root.into_std_path_buf(),
             path_dependencies,
         };
