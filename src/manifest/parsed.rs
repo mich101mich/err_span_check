@@ -8,9 +8,11 @@ use serde::de::{
 pub(crate) fn get_manifest(manifest_dir: &Path) -> Result<Manifest> {
     let cargo_toml_path = manifest_dir.join("Cargo.toml");
 
-    let manifest_str = fs_err::read_to_string(&cargo_toml_path).context("failed to read manifest")?;
+    let manifest_str =
+        fs_err::read_to_string(&cargo_toml_path).context("failed to read manifest")?;
 
-    let mut manifest: Manifest = toml::from_str(&manifest_str).context("failed to parse manifest")?;
+    let mut manifest: Manifest =
+        toml::from_str(&manifest_str).context("failed to parse manifest")?;
 
     fix_dependencies(&mut manifest.dependencies, manifest_dir);
     fix_dependencies(&mut manifest.dev_dependencies, manifest_dir);

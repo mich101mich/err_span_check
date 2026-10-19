@@ -157,7 +157,7 @@ impl TestFile {
                 writeln!(new_content).unwrap();
             }
             while setup_code_index < test.setup_code_prefix_length {
-                writeln!(new_content, "{}", &self.setup_code[setup_code_index]).unwrap();
+                writeln!(new_content, "{}", self.setup_code[setup_code_index]).unwrap();
                 setup_code_index += 1;
             }
 
@@ -168,7 +168,7 @@ impl TestFile {
         }
 
         while setup_code_index < self.setup_code.len() {
-            writeln!(new_content, "{}", &self.setup_code[setup_code_index]).unwrap();
+            writeln!(new_content, "{}", self.setup_code[setup_code_index]).unwrap();
             setup_code_index += 1;
         }
 

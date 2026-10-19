@@ -7,7 +7,9 @@ edition = "2024"
 proc-macro = true
 
 [dependencies]
-err_span_check = { path = ".." }
 proc-macro2 = "1.0.60"
 quote = "1.0.0"
 syn = { version = "2.0.81", features = ["full"] }
+
+[dev-dependencies]
+err_span_check = { path = ".." }

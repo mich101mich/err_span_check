@@ -27,10 +27,13 @@ members = ["example"]
 anyhow = "1.0.39"
 cargo_metadata = "0.23.0"
 fs-err = { version = "3.2.0", features = ["debug"] }
-git2 = { version = "0.20.0", default-features = false }
+git2 = { version = "0.21.0", default-features = false }
 rustc_version = "0.4.0"
 serde = { version = "1.0.0", features = ["derive"] }
 serde_json = "1.0.0"
 termcolor = "1.0.0"
 toml = "1.0.0"
 unicode-width = { version = "0.2.0", default-features = false }
+
+[dev-dependencies]
+cc = "1.0.84" # for MinVersions: jobserver causes errors on windows (dependency of git2 -> cc)
