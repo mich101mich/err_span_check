@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.0] - Unreleased
 
+### Changed
+- Switched from libgit2 to calling git via the command line.
+  - This fixes some platform-specific issues and significantly improves compile times.
+
 ### Removed
 - Removed support for features, since the previous setup breaks with [build-dir-layout-v2]
   and is far too fragile to be maintained.
