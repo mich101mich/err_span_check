@@ -24,8 +24,8 @@ impl GitRepo {
                 "--porcelain=v1",
                 "-z",
                 "--no-renames",
-                "--ignored=matching",
-                "--untracked-files=all",
+                "--ignored=matching", // show ignored files, but not recursively for ignored directories
+                "--untracked-files=normal", // show untracked files, but not recursively for untracked directories
                 "--",
                 ".",
             ],
@@ -38,6 +38,7 @@ impl GitRepo {
                 bail!("unexpected git status entry");
             };
             let path = std::str::from_utf8(path).context("git returned a non-UTF-8 path")?;
+            let path = path.trim_end_matches(['/', '\\']); // for ignored/untracked directories
             statuses.insert(PathBuf::from(path), [*x, *y]);
         }
 
@@ -54,7 +55,7 @@ impl GitRepo {
             )
         };
 
-        // ignored directories are listed as a whole, so the parents need to be checked too
+        // Paths not listed by `git status` are tracked and unchanged; check ancestors for collapsed directories
         let Some(&[x, y]) = path.ancestors().find_map(|p| self.statuses.get(p)) else {
             return Ok(());
         };
@@ -167,6 +168,7 @@ mod tests {
         let temp = TempGitRepo::new("untracked_and_ignored");
         temp.write(".gitignore", "ignored.rs\nignored_dir/\n");
         let untracked = temp.write("tests/fail/untracked.rs", "fn main() {}\n");
+        let untracked_in_dir = temp.write("tests/fail/untracked_dir/test.rs", "fn main() {}\n");
         let ignored = temp.write("tests/fail/ignored.rs", "fn main() {}\n");
         let ignored_in_dir = temp.write("tests/fail/ignored_dir/test.rs", "fn main() {}\n");
 
@@ -176,11 +178,51 @@ mod tests {
             "file is untracked by git"
         );
         assert_eq!(
+            repo.is_clean(&untracked_in_dir).unwrap_err().to_string(),
+            "file is untracked by git"
+        );
+        assert_eq!(
             repo.is_clean(&ignored).unwrap_err().to_string(),
             "file is ignored by git"
         );
         assert_eq!(
             repo.is_clean(&ignored_in_dir).unwrap_err().to_string(),
+            "file is ignored by git"
+        );
+    }
+
+    #[test]
+    fn force_added_in_ignored_dir() {
+        let temp = TempGitRepo::new("force_added_in_ignored_dir");
+        temp.write(".gitignore", "ignored_dir/\n");
+        let force_added_committed =
+            temp.write("tests/fail/ignored_dir/committed.rs", "fn main() {}\n");
+        let force_added_staged = temp.write("tests/fail/ignored_dir/staged.rs", "fn main() {}\n");
+        let force_added_modified =
+            temp.write("tests/fail/ignored_dir/modified.rs", "fn main() {}\n");
+        let untracked_sibling = temp.write("tests/fail/ignored_dir/untracked.rs", "fn main() {}\n");
+
+        temp.git(&["add", "-f", "tests/fail/ignored_dir/committed.rs"]);
+        temp.git(&["add", "-f", "tests/fail/ignored_dir/modified.rs"]);
+        temp.git(&["commit", "-m", "initial"]);
+
+        temp.git(&["add", "-f", "tests/fail/ignored_dir/staged.rs"]);
+        temp.write(
+            "tests/fail/ignored_dir/modified.rs",
+            "fn main() { let x = 1; }\n",
+        );
+
+        let repo = GitRepo::open(&temp.dir).unwrap();
+        assert!(repo.is_clean(&force_added_committed).is_ok());
+        assert!(repo.is_clean(&force_added_staged).is_ok());
+        assert_eq!(
+            repo.is_clean(&force_added_modified)
+                .unwrap_err()
+                .to_string(),
+            "file has unstaged changes"
+        );
+        assert_eq!(
+            repo.is_clean(&untracked_sibling).unwrap_err().to_string(),
             "file is ignored by git"
         );
     }
