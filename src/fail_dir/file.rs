@@ -188,10 +188,13 @@ impl TestFile {
         Ok(())
     }
 
-    pub(crate) fn split(&self, new_file_content: String) -> Result<Option<Error>> {
+    pub(crate) fn split(&self, new_file_content: &str) -> Result<Option<Error>> {
         let is_nightly = rustc_version::version_meta()
             .is_ok_and(|meta| meta.channel == rustc_version::Channel::Nightly);
+        self.split_for_channel(new_file_content, is_nightly)
+    }
 
+    fn split_for_channel(&self, new_file_content: &str, is_nightly: bool) -> Result<Option<Error>> {
         let file_name = self.path.file_name().unwrap(); // unwrap: these were checked during dir walk
         let dir = self.path.parent().unwrap();
         let stable_file = dir.join("stable").join(file_name);
@@ -347,5 +350,125 @@ expected output 4
         );
 
         // only in b: Not present in copied
+    }
+
+    struct TempDir {
+        dir: PathBuf,
+    }
+
+    impl TempDir {
+        fn new(name: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!(
+                "err_span_check_file_test_{}_{}",
+                std::process::id(),
+                name
+            ));
+            let _ = std::fs::remove_dir_all(&dir);
+            fs_err::create_dir_all(&dir).unwrap();
+            Self { dir }
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    fn make_test_file_in(dir: &Path, filename: &str, content: &str) -> TestFile {
+        let path = dir.join(filename);
+        fs_err::write(&path, content).unwrap();
+        TestFile::from_raw_file(
+            RawFile {
+                path,
+                relative_path: PathBuf::from(filename),
+                content: content.to_string(),
+                git_status: Ok(()),
+                toolchain: Toolchain::Both,
+            },
+            filename.strip_suffix(".rs").unwrap_or(filename),
+        )
+    }
+
+    #[test]
+    fn test_write_and_split() {
+        let temp = TempDir::new("write_and_split");
+
+        // Test write
+        let file = make_test_file_in(&temp.dir, "write_test.rs", "///// test\nold\n");
+        file.write("///// test\nnew\n".to_string()).unwrap();
+        assert_eq!(
+            fs_err::read_to_string(&file.path).unwrap(),
+            "///// test\nnew\n"
+        );
+
+        // Test split on nightly
+        let nightly_dir = temp.dir.join("on_nightly");
+        fs_err::create_dir_all(&nightly_dir).unwrap();
+        let file = make_test_file_in(&nightly_dir, "test.rs", "///// test\nstable_content\n");
+        assert!(
+            file.split_for_channel("///// test\nnightly_content\n", true)
+                .unwrap()
+                .is_none()
+        );
+        assert!(!file.path.exists());
+        assert_eq!(
+            fs_err::read_to_string(nightly_dir.join("stable/test.rs")).unwrap(),
+            "///// test\nstable_content\n"
+        );
+        assert_eq!(
+            fs_err::read_to_string(nightly_dir.join("nightly/test.rs")).unwrap(),
+            "///// test\nnightly_content\n"
+        );
+
+        // Both exist now -> should report "split files already exist"
+        let file = make_test_file_in(&nightly_dir, "test.rs", "///// test\ncontent\n");
+        assert_eq!(
+            file.split("///// test\nnew\n")
+                .unwrap()
+                .unwrap()
+                .to_string(),
+            "split files already exist"
+        );
+
+        // Only stable exists -> should report "stable file already exists"
+        fs_err::remove_file(nightly_dir.join("nightly/test.rs")).unwrap();
+        assert_eq!(
+            file.split_for_channel("///// test\nnew\n", true)
+                .unwrap()
+                .unwrap()
+                .to_string(),
+            "stable file already exists"
+        );
+
+        // Test split on stable
+        let stable_dir = temp.dir.join("on_stable");
+        fs_err::create_dir_all(&stable_dir).unwrap();
+        let file = make_test_file_in(&stable_dir, "test.rs", "///// test\nnightly_content\n");
+        assert!(
+            file.split_for_channel("///// test\nstable_content\n", false)
+                .unwrap()
+                .is_none()
+        );
+        assert!(!file.path.exists());
+        assert_eq!(
+            fs_err::read_to_string(stable_dir.join("stable/test.rs")).unwrap(),
+            "///// test\nstable_content\n"
+        );
+        assert_eq!(
+            fs_err::read_to_string(stable_dir.join("nightly/test.rs")).unwrap(),
+            "///// test\nnightly_content\n"
+        );
+
+        // Only nightly exists -> should report "nightly file already exists"
+        fs_err::remove_file(stable_dir.join("stable/test.rs")).unwrap();
+        let file = make_test_file_in(&stable_dir, "test.rs", "///// test\ncontent\n");
+        assert_eq!(
+            file.split_for_channel("///// test\nnew\n", false)
+                .unwrap()
+                .unwrap()
+                .to_string(),
+            "nightly file already exists"
+        );
     }
 }

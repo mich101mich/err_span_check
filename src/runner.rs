@@ -108,7 +108,7 @@ pub(crate) fn run() -> Result<()> {
 
         if should_update && new_file_content != file.original_content {
             if should_split_on_change && file.toolchain == fail_dir::Toolchain::Both {
-                if let Some(msg) = file.split(new_file_content)? {
+                if let Some(msg) = file.split(&new_file_content)? {
                     total += 1;
                     failed += 1;
                     message::begin_test("split test file", &file.relative_path, 0);
