@@ -275,7 +275,7 @@ fn main() {
 
   export ERR_SPAN_CHECK_SPLIT_ON_CHANGE=true
   cargo +nightly test # If any changes need to be made here, it means that they are a difference between stable
-                      # and nightly, so the file is split copied to separate stable and nightly folders.
+                      # and nightly, so the file is split into separate stable and nightly folders.
   ```
 
 

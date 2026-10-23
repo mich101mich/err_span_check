@@ -49,6 +49,13 @@
 //!
 //! **Note:** All test cases in `tests/fail` must be at least staged in git.
 //!
+//! # Environment Variables
+//!
+//! - `ERR_SPAN_CHECK` can be set to `frozen` to make tests fail on mismatch instead of updating the local files
+//!   (useful for CI).
+//! - `ERR_SPAN_CHECK_SPLIT_ON_CHANGE` can be set to `true` to automatically split modified test files into `stable`
+//!   and `nightly` subdirectories.
+//!
 //! See the [README](https://github.com/mich101mich/err_span_check) for more details.
 
 #[macro_use]

@@ -182,7 +182,7 @@ impl TestFile {
                 .context("Failed to create directories for test file")?;
         }
         // It is pretty much guaranteed that the path will have a parent, so the `else` branch here should be an error,
-        // but that seems a bit extreme. fs_err::write will probably have more info in it error.
+        // but that seems a bit extreme. fs_err::write will probably have more info in its error.
 
         fs_err::write(&self.path, new_file_content).context("Failed to write updated test file")?;
         Ok(())
