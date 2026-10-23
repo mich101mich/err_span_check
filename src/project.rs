@@ -138,7 +138,7 @@ impl Project {
                     version: None,
                     path: Some(source_dir.to_path_buf()),
                     optional: false,
-                    default_features: Some(false),
+                    default_features: Some(true),
                     features: Vec::new(),
                     git: None,
                     branch: None,

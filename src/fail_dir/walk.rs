@@ -109,7 +109,12 @@ impl Directory {
             let filename = entry.file_name();
             let path = entry.path();
             let relative_path = relative_dir.join(&filename);
-            if path.is_file() {
+
+            // Symlinks can completely break our setup, so we need to make sure to correctly err on them.
+            // Calling symlink_metadata makes is_file and is_dir return false for symlinks.
+            let metadata = fs_err::symlink_metadata(&path)?;
+
+            if metadata.is_file() {
                 let stem = filename
                     .to_str()
                     .and_then(|f| f.strip_suffix(".rs"))
@@ -145,7 +150,7 @@ Please choose a different name for the test file: {}"#,
                         toolchain,
                     },
                 );
-            } else if path.is_dir() {
+            } else if metadata.is_dir() {
                 let name = filename.to_string_lossy().to_string();
 
                 let toolchain = match name.as_str() {
