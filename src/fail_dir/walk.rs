@@ -1,6 +1,6 @@
 use super::*;
 
-pub(crate) fn parse_test_files(base_dir: PathBuf) -> Result<Vec<TestFile>, Error> {
+pub(crate) fn parse_test_files(base_dir: PathBuf) -> Result<Vec<TestFile>> {
     let fail_dir = base_dir.join("tests").join("fail");
     if !fail_dir.is_dir() {
         // We could say "no tests found" here, but the user explicitly called this function, so they want to run tests.
@@ -12,7 +12,7 @@ pub(crate) fn parse_test_files(base_dir: PathBuf) -> Result<Vec<TestFile>, Error
     }
 
     let repo = git::GitRepo::open(&fail_dir)?;
-    let dir = Directory::scan(fail_dir, PathBuf::new(), &repo)?;
+    let dir = Directory::scan(fail_dir, PathBuf::new(), &repo, Toolchain::Both)?;
 
     let is_nightly = rustc_version::version_meta()
         .is_ok_and(|meta| meta.channel == rustc_version::Channel::Nightly);
@@ -22,18 +22,37 @@ pub(crate) fn parse_test_files(base_dir: PathBuf) -> Result<Vec<TestFile>, Error
     Ok(state.test_files)
 }
 
+/// A directory in the fail directory
 struct Directory {
+    /// Full path to the directory
     dir: PathBuf,
+    /// Path relative to the fail directory
     relative_dir: PathBuf,
-    files: BTreeMap<String, File>,
+    /// Files directly inside this directory, keyed by their stem
+    files: BTreeMap<String, RawFile>,
+    /// Subdirectories directly inside this directory, keyed by their name
     subdirs: BTreeMap<String, Directory>,
 }
 
-struct File {
-    path: PathBuf,
-    relative_path: PathBuf,
-    content: String,
-    git_status: Result<()>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Toolchain {
+    Stable,
+    Nightly,
+    Both,
+}
+
+/// A file in the fail directory
+pub struct RawFile {
+    /// Full path to the file
+    pub path: PathBuf,
+    /// Path relative to the fail directory
+    pub relative_path: PathBuf,
+    /// Content of the file
+    pub content: String,
+    /// Git status of the file (Ok if clean, Err if modified)
+    pub git_status: Result<()>,
+    /// Indicates if the file is somewhere inside a stable/nightly directory
+    pub toolchain: Toolchain,
 }
 
 struct FailDirState {
@@ -54,28 +73,18 @@ impl FailDirState {
         }
     }
 
-    fn add_test_file(&mut self, mut file: File, stem: &str) {
-        let git_status = std::mem::replace(&mut file.git_status, Ok(()));
-
-        let mut file = self.make_test_file(file, stem);
-
-        // parsing error takes precedence over git error, since it means the file will need to be modified anyway
-        if file.error.is_none()
-            && let Err(git_error) = git_status
-        {
-            file.git_status = Err(git_error);
-        }
-
-        self.test_files.push(file);
+    fn add_test_file(&mut self, file: RawFile, stem: &str) {
+        let test_file = self.make_test_file(file, stem);
+        self.test_files.push(test_file);
     }
 
-    fn make_test_file(&mut self, file: File, stem: &str) -> TestFile {
+    fn make_test_file(&mut self, raw_file: RawFile, stem: &str) -> TestFile {
         // Ensure unique filenames by appending a counter
         let count = self.unique_files.entry(stem.to_string()).or_insert(0);
         *count += 1;
-        let stem = format!("{}_{}", stem, count);
+        let stem = format!("{}_{}", stem, *count);
 
-        TestFile::from_file(file.path, file.relative_path, &stem, file.content)
+        TestFile::from_raw_file(raw_file, &stem)
     }
 
     fn add_test_error(&mut self, path: PathBuf, relative_path: PathBuf, error: Error) {
@@ -85,7 +94,12 @@ impl FailDirState {
 }
 
 impl Directory {
-    fn scan(dir: PathBuf, relative_dir: PathBuf, repo: &git::GitRepo) -> Result<Self> {
+    fn scan(
+        dir: PathBuf,
+        relative_dir: PathBuf,
+        repo: &git::GitRepo,
+        toolchain: Toolchain,
+    ) -> Result<Self> {
         let mut files = BTreeMap::new();
         let mut subdirs = BTreeMap::new();
 
@@ -123,17 +137,25 @@ Please choose a different name for the test file: {}"#,
 
                 files.insert(
                     stem.to_owned(),
-                    File {
+                    RawFile {
                         path,
                         relative_path,
                         content,
                         git_status,
+                        toolchain,
                     },
                 );
             } else if path.is_dir() {
-                let subdir = Directory::scan(path, relative_path, repo)?;
+                let name = filename.to_string_lossy().to_string();
+
+                let toolchain = match name.as_str() {
+                    "stable" => Toolchain::Stable,
+                    "nightly" => Toolchain::Nightly,
+                    _ => toolchain, // keep from outer. conflicting nesting will be handled in flatten_directory()
+                };
+
+                let subdir = Directory::scan(path, relative_path, repo, toolchain)?;
                 if !subdir.files.is_empty() || !subdir.subdirs.is_empty() {
-                    let name = filename.to_string_lossy().to_string();
                     subdirs.insert(name, subdir);
                 }
             } else {
@@ -233,6 +255,7 @@ fn merge_nightly_from_stable(stable: Directory, nightly: Directory, state: &mut 
                 nightly_file.relative_path,
                 &stem,
                 nightly_file.content,
+                Toolchain::Nightly,
             )
         } else {
             let filename = format!("{}.rs", stem);
@@ -244,6 +267,7 @@ fn merge_nightly_from_stable(stable: Directory, nightly: Directory, state: &mut 
                 nightly.relative_dir.join(&filename),
                 &stem,
                 content,
+                Toolchain::Nightly,
             )
         };
 
@@ -408,7 +432,7 @@ mod tests {
             name: &'a str,
             content: Result<&str, &str>,
             git_status: Result<(), &str>,
-        ) -> (&'a str, File) {
+        ) -> (&'a str, RawFile) {
             let content = match content {
                 Ok(c) => format!("///// test\n{c}"),
                 Err(e) => s(e),
@@ -422,18 +446,19 @@ mod tests {
             } else {
                 format!("{relative_path}/{name}.rs")
             };
-            let file = File {
+            let file = RawFile {
                 path: p(format!("/fail/{relative_path}")),
                 relative_path: p(relative_path),
                 content,
                 git_status,
+                toolchain: Toolchain::Both,
             };
             (name, file)
         }
         fn dir<'a, const F: usize, const D: usize>(
             relative_path: &str,
             name: &'a str,
-            files: [(&str, File); F],
+            files: [(&str, RawFile); F],
             subdirs: [(&str, Directory); D],
         ) -> (&'a str, Directory) {
             let relative_path = if relative_path.is_empty() {

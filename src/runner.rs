@@ -7,6 +7,18 @@ pub(crate) fn run() -> Result<()> {
         panic!("err_span_check was invoked multiple times, which is not supported");
     }
 
+    let should_update = env::should_update()?;
+    let should_split_on_change = env::should_split_on_change()?;
+    if should_update {
+        if should_split_on_change {
+            println_col!("Will split or update files on change");
+        } else {
+            println_col!("Will update files on change");
+        }
+    } else {
+        println_col!("Will check for mismatched tests");
+    }
+
     let start_time = std::time::Instant::now();
 
     let base_dir = cargo::manifest_dir()?;
@@ -27,37 +39,13 @@ pub(crate) fn run() -> Result<()> {
         return Ok(());
     }
 
-    let should_update = env::should_update()?;
-
     let project = Project::prepare()?;
 
-    print_col!("\n\n");
-
-    let tests_dir = project.dir.join("tests");
-    fs_err::create_dir_all(&tests_dir).context("failed to create tests directory")?;
-
-    let mut active_test_files = vec![];
-
-    for file in &test_files {
-        if file.has_error() {
-            continue;
-        }
-
-        for test_case in &file.tests {
-            let test_file_path = tests_dir.join(test_case.filename());
-
-            // Only write if content has changed
-            let current_content = std::fs::read(&test_file_path).ok();
-            if current_content.as_deref() != Some(test_case.source_code.as_bytes()) {
-                fs_err::write(&test_file_path, &test_case.source_code)
-                    .context("failed to write test file")?;
-            }
-
-            active_test_files.push(test_case.test_name.as_str());
-        }
-    }
+    let active_test_files = update_test_files(&test_files, &project.tests_dir)?;
 
     let mut output = cargo::check_tests(&project, &active_test_files)?;
+
+    print_col!("\n\n");
 
     let mut total = 0;
     let mut failed = 0;
@@ -86,8 +74,9 @@ pub(crate) fn run() -> Result<()> {
             );
             total += 1;
 
-            let local_path = PathBuf::from("tests").join(test.filename());
-            let full_path = project.dir.join(&local_path);
+            let filename = test.filename();
+            let full_path = project.tests_dir.join(&filename);
+            let local_path = full_path.strip_prefix(&project.dir).unwrap().to_owned(); // unwrap: full_path was constructed from project.dir
             let full_path = full_path.canonicalize().unwrap_or(full_path);
 
             let test_output = output.remove(&full_path).unwrap_or_default();
@@ -104,7 +93,11 @@ pub(crate) fn run() -> Result<()> {
             if test.expected == actual {
                 message::ok();
             } else if should_update {
-                message::updated(&file.relative_path);
+                if should_split_on_change && file.toolchain == fail_dir::Toolchain::Both {
+                    message::split(&file.relative_path);
+                } else {
+                    message::updated(&file.relative_path);
+                }
                 failed += 1;
             } else {
                 message::mismatch(&test.expected, &actual);
@@ -114,7 +107,16 @@ pub(crate) fn run() -> Result<()> {
         });
 
         if should_update && new_file_content != file.original_content {
-            file.write(new_file_content)?;
+            if should_split_on_change && file.toolchain == fail_dir::Toolchain::Both {
+                if let Some(msg) = file.split(new_file_content)? {
+                    total += 1;
+                    failed += 1;
+                    message::begin_test("split test file", &file.relative_path, 0);
+                    message::fail(msg);
+                }
+            } else {
+                file.write(new_file_content)?;
+            }
         }
     }
 
@@ -128,6 +130,29 @@ pub(crate) fn run() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn update_test_files<'a>(test_files: &'a [TestFile], tests_dir: &Path) -> Result<Vec<&'a str>> {
+    let mut active_test_files = vec![];
+    for file in test_files {
+        if file.has_error() {
+            continue;
+        }
+
+        for test_case in &file.tests {
+            let test_file_path = tests_dir.join(test_case.filename());
+
+            // Only write if content has changed
+            let current_content = std::fs::read(&test_file_path).ok();
+            if current_content.as_deref() != Some(test_case.source_code.as_bytes()) {
+                fs_err::write(&test_file_path, &test_case.source_code)
+                    .context("failed to write test file")?;
+            }
+
+            active_test_files.push(test_case.test_name.as_str());
+        }
+    }
+    Ok(active_test_files)
 }
 
 // Filter which test cases are run by err_span_check.

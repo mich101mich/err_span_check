@@ -55,6 +55,12 @@ pub(crate) fn updated(path: &Path) {
     println_col!(Yellow => "Test at {} will be updated to match actual output.", path.display());
 }
 
+/// Complete the test case with a "split" message
+pub(crate) fn split(path: &Path) {
+    println_col!(BoldRed => "mismatch");
+    println_col!(Yellow => "Test at {} will be split into stable and nightly files.", path.display());
+}
+
 pub(crate) fn print_summary(
     passed: usize,
     failed: usize,

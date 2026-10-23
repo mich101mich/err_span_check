@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.0] - Unreleased
 
+### Added
+- Added `ERR_SPAN_CHECK_SPLIT_ON_CHANGE` environment variable to automatically split test files into stable and
+  nightly files.
+
 ### Changed
 - Switched from libgit2 to calling git via the command line.
   - This fixes some platform-specific issues and significantly improves compile times.

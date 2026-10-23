@@ -266,6 +266,18 @@ fn main() {
 
 - `ERR_SPAN_CHECK` can be set to the value `frozen` to have the tests fail with their expected output rather than
   updating the local files. This is useful for CI and similar contexts.
+- `ERR_SPAN_CHECK_SPLIT_ON_CHANGE` can be set to the value `true` to have the tests split a file into stable and
+  nightly variants when it is changed. Example test setup:
+
+  ```sh
+  cargo +stable test # will simply change files in-place
+  # ... inspect and stage any changes
+
+  export ERR_SPAN_CHECK_SPLIT_ON_CHANGE=true
+  cargo +nightly test # If any changes need to be made here, it means that they are a difference between stable
+                      # and nightly, so the file is split copied to separate stable and nightly folders.
+  ```
+
 
 ## License
 Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or

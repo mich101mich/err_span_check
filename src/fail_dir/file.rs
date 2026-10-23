@@ -14,6 +14,8 @@ pub(crate) struct TestFile {
     pub tests: Vec<TestCase>,
     /// The git status of this file. Ok(()) means clean, errors are self-explanatory.
     pub git_status: Result<()>,
+    /// Indicates if this test file is inside a stable/nightly directory.
+    pub toolchain: Toolchain,
     /// If an error occurred while processing this test file, it is stored here.
     /// This allows us to continue processing other test files.
     pub error: Option<Error>,
@@ -33,34 +35,31 @@ impl TestFile {
             setup_code: vec![],
             tests: vec![],
             git_status: Ok(()),
+            toolchain: Toolchain::Both, // value doesn't matter here
             error: Some(error),
         }
     }
 
-    pub fn from_file(
-        path: PathBuf,
-        relative_path: PathBuf,
-        file_stem: &str,
-        original_content: String,
-    ) -> Self {
-        let (setup_code, tests) = match Self::parse_test_cases(file_stem, &original_content) {
+    pub fn from_raw_file(file: RawFile, stem: &str) -> Self {
+        let (setup_code, tests) = match Self::parse_test_cases(stem, &file.content) {
             Ok(value) => value,
             Err((line_number, e)) => {
                 let error = anyhow::anyhow!(
                     "Failed to parse test case from {}:{line_number}: {e}",
-                    path.display(),
+                    file.path.display(),
                 );
-                return Self::from_error(path, relative_path, error);
+                return Self::from_error(file.path, file.relative_path, error);
             }
         };
 
         TestFile {
-            path,
-            relative_path,
-            original_content,
+            path: file.path,
+            relative_path: file.relative_path,
+            original_content: file.content,
             setup_code,
             tests,
-            git_status: Ok(()),
+            git_status: file.git_status,
+            toolchain: file.toolchain,
             error: None,
         }
     }
@@ -71,6 +70,7 @@ impl TestFile {
         relative_path: PathBuf,
         file_stem: &str,
         original_content: String,
+        toolchain: Toolchain,
     ) -> Self {
         let mut tests = existing.tests;
         if !original_content.is_empty()
@@ -99,6 +99,7 @@ impl TestFile {
             setup_code: existing.setup_code,
             tests,
             git_status: Ok(()), // We create this file, so it is clean by definition
+            toolchain,
             error: existing.error,
         }
     }
@@ -175,7 +176,7 @@ impl TestFile {
         new_content
     }
 
-    pub(crate) fn write(&self, new_file_content: String) -> Result<(), Error> {
+    pub(crate) fn write(&self, new_file_content: String) -> Result<()> {
         if let Some(parent_dir) = self.path.parent() {
             fs_err::create_dir_all(parent_dir)
                 .context("Failed to create directories for test file")?;
@@ -185,6 +186,46 @@ impl TestFile {
 
         fs_err::write(&self.path, new_file_content).context("Failed to write updated test file")?;
         Ok(())
+    }
+
+    pub(crate) fn split(&self, new_file_content: String) -> Result<Option<Error>> {
+        let is_nightly = rustc_version::version_meta()
+            .is_ok_and(|meta| meta.channel == rustc_version::Channel::Nightly);
+
+        let file_name = self.path.file_name().unwrap(); // unwrap: these were checked during dir walk
+        let dir = self.path.parent().unwrap();
+        let stable_file = dir.join("stable").join(file_name);
+        let nightly_file = dir.join("nightly").join(file_name);
+
+        match (stable_file.is_file(), nightly_file.is_file()) {
+            (true, true) => return Ok(Some(anyhow::anyhow!("split files already exist"))),
+            (true, false) => return Ok(Some(anyhow::anyhow!("stable file already exists"))),
+            (false, true) => return Ok(Some(anyhow::anyhow!("nightly file already exists"))),
+            (false, false) => {}
+        }
+
+        fs_err::create_dir_all(stable_file.parent().unwrap())
+            .context("Failed to create directories for splitting stable test file")?;
+        fs_err::create_dir_all(nightly_file.parent().unwrap())
+            .context("Failed to create directories for splitting nightly test file")?;
+
+        if is_nightly {
+            // The user previously ran stable, which produced (or at least verified) self.original_content.
+            // Now we ran nightly tests, which produced the (different) new_file_content.
+            // => Move original file to stable, and write new_file_content to a nightly file.
+            fs_err::rename(&self.path, &stable_file)
+                .context("Failed to move original file to split stable test file")?;
+            fs_err::write(&nightly_file, new_file_content)
+                .context("Failed to write to split nightly test file")?;
+        } else {
+            // vice versa from above: Move original file to nightly, and write new_file_content to stable.
+            fs_err::rename(&self.path, &nightly_file)
+                .context("Failed to move original file to split nightly test file")?;
+            fs_err::write(&stable_file, new_file_content)
+                .context("Failed to write to split stable test file")?;
+        }
+
+        Ok(None)
     }
 }
 
@@ -263,14 +304,23 @@ changed expected output 2
 expected output 4
 //~ error in b.only_in_b"#;
 
-        let existing =
-            TestFile::from_file(PathBuf::new(), PathBuf::new(), "file_a", file_a.to_string());
+        let existing = TestFile::from_raw_file(
+            RawFile {
+                path: PathBuf::new(),
+                relative_path: PathBuf::new(),
+                content: file_a.to_string(),
+                git_status: Ok(()),
+                toolchain: Toolchain::Stable,
+            },
+            "file_a",
+        );
         let copied = TestFile::copy_from(
             existing,
             PathBuf::new(),
             PathBuf::new(),
             "file_b",
             file_b.to_string(),
+            Toolchain::Nightly,
         );
 
         assert_eq!(copied.tests.len(), 3);

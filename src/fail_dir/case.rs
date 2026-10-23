@@ -479,6 +479,7 @@ fn foo() {
             dir: PathBuf::from("."),
             owned_dir: PathBuf::from("."),
             target_dir: PathBuf::from("target"),
+            tests_dir: PathBuf::from("tests"),
             name: "test_crate".into(),
             workspace: PathBuf::from("."),
             path_dependencies: vec![],

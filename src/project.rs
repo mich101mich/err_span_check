@@ -8,6 +8,7 @@ pub(crate) struct Project {
     pub dir: PathBuf,
     pub owned_dir: PathBuf,
     pub target_dir: PathBuf,
+    pub tests_dir: PathBuf,
     pub name: String,
     pub workspace: PathBuf,
     pub path_dependencies: Vec<PathDependency>,
@@ -77,10 +78,14 @@ impl Project {
         fs_err::write(project_dir.join("main.rs"), main_rs)
             .context("failed to write test setup")?;
 
+        let tests_dir = project_dir.join("tests").into_std_path_buf();
+        fs_err::create_dir_all(&tests_dir).context("failed to create tests directory")?;
+
         let mut project = Project {
             dir: project_dir.into_std_path_buf(),
             owned_dir: owned_dir.into_std_path_buf(),
             target_dir: target_directory.into_std_path_buf(),
+            tests_dir,
             name: project_name,
             workspace: workspace_root.into_std_path_buf(),
             path_dependencies,

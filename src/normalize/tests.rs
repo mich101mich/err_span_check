@@ -25,6 +25,7 @@ macro_rules! test_normalize {
                 dir: PathBuf::new(),
                 owned_dir: PathBuf::new(),
                 target_dir: PathBuf::from(unwrap_or!($($target)?, "/git/err_span_check/target")),
+                tests_dir: PathBuf::from("/tests"),
                 name: "err_span_check000".to_string(),
                 workspace: PathBuf::from(unwrap_or!($($workspace)?, "/git/err_span_check")),
                 path_dependencies: vec![crate::project::PathDependency {
