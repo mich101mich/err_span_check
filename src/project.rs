@@ -156,29 +156,6 @@ impl Project {
             target.dependencies.extend(dev_dependencies);
         }
 
-        let mut features = source_manifest.features;
-        for (feature, enables) in &mut features {
-            enables.retain(|en| {
-                let Some(dep_name) = en.strip_prefix("dep:") else {
-                    return false;
-                };
-                if let Some(Dependency { optional: true, .. }) = dependencies.get(dep_name) {
-                    return true;
-                }
-                for target in targets.values() {
-                    if let Some(Dependency { optional: true, .. }) =
-                        target.dependencies.get(dep_name)
-                    {
-                        return true;
-                    }
-                }
-                false
-            });
-            if has_lib_target {
-                enables.insert(0, format!("{}/{}", crate_name, feature));
-            }
-        }
-
         let mut manifest = generated::Manifest {
             cargo_features: source_manifest.cargo_features,
             package: generated::Package {
@@ -188,7 +165,6 @@ impl Project {
                 resolver: source_manifest.package.resolver,
                 publish: false,
             },
-            features,
             dependencies,
             target: targets,
             bins: Vec::new(),

@@ -93,8 +93,6 @@ pub(crate) struct Manifest {
     #[serde(default)]
     pub package: Package,
     #[serde(default)]
-    pub features: BTreeMap<String, Vec<String>>,
-    #[serde(default)]
     pub dependencies: BTreeMap<String, Dependency>,
     #[serde(default, alias = "dev-dependencies")]
     pub dev_dependencies: BTreeMap<String, Dependency>,
