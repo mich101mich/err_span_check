@@ -176,7 +176,7 @@ but got
             .collect::<String>();
 
         let mut actual = String::new();
-        writeln!(actual, "{}", &self.header_line).unwrap();
+        writeln!(actual, "{}", self.header_line).unwrap();
         for (line, annotation) in self.source_code_lines.iter().zip(&mut annotations) {
             writeln!(actual, "{line}").unwrap();
 
@@ -479,9 +479,8 @@ fn foo() {
             dir: PathBuf::from("."),
             owned_dir: PathBuf::from("."),
             target_dir: PathBuf::from("target"),
+            tests_dir: PathBuf::from("tests"),
             name: "test_crate".into(),
-            should_update: false,
-            features: None,
             workspace: PathBuf::from("."),
             path_dependencies: vec![],
         };

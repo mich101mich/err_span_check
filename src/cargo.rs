@@ -1,6 +1,8 @@
 use crate::*;
 
-use std::{fs::File, process::Command};
+use std::process::Command;
+
+use fs_err::File;
 
 use cargo_metadata::{
     Message,
@@ -26,7 +28,7 @@ fn cargo(project: &Project) -> Command {
     cmd.arg(format!("--config=build.rustflags={rustflags}"));
     cmd.arg(format!(
         "--config=target.{}.rustflags={rustflags}",
-        target_triple::TARGET
+        target_tuple::TARGET
     ));
 
     cmd
@@ -34,15 +36,13 @@ fn cargo(project: &Project) -> Command {
 
 pub(crate) fn manifest_dir() -> Result<PathBuf> {
     if let Some(manifest_dir) = std::env::var_os("CARGO_MANIFEST_DIR") {
-        return PathBuf::from(manifest_dir)
-            .canonicalize()
+        return fs_err::canonicalize(PathBuf::from(manifest_dir))
             .context("failed to canonicalize CARGO_MANIFEST_DIR");
     }
     let current_dir = std::env::current_dir().context("failed to get current directory")?;
     for dir in current_dir.ancestors() {
         if dir.join("Cargo.toml").exists() {
-            return dir
-                .canonicalize()
+            return fs_err::canonicalize(dir)
                 .context("failed to canonicalize std::env::current_dir()");
         }
     }
@@ -71,8 +71,7 @@ pub(crate) fn build_dependencies(project: &mut Project) -> Result<()> {
         .arg("check")
         .args(target())
         .arg("--bin")
-        .arg(&project.name)
-        .args(features(project));
+        .arg(&project.name);
 
     let status = command.status().context("failed to execute cargo")?;
     if !status.success() {
@@ -93,8 +92,7 @@ pub(crate) fn check_tests(
         cmd.arg("--test").arg(test);
     }
 
-    cmd.args(features(project))
-        .args(target())
+    cmd.args(target())
         .arg("--quiet")
         .arg("--color=never")
         .arg("--message-format=json")
@@ -111,19 +109,8 @@ pub(crate) fn metadata() -> Result<cargo_metadata::Metadata> {
         .context("failed to get cargo metadata")
 }
 
-fn features(project: &Project) -> Vec<String> {
-    match &project.features {
-        Some(features) => vec![
-            "--no-default-features".to_owned(),
-            "--features".to_owned(),
-            features.join(","),
-        ],
-        None => vec![],
-    }
-}
-
 fn target() -> Vec<&'static str> {
-    vec!["--target", target_triple::TARGET]
+    vec!["--target", target_tuple::TARGET]
 }
 
 pub(crate) fn parse_cargo_json(stdout: &[u8]) -> HashMap<PathBuf, Vec<Diagnostic>> {

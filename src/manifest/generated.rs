@@ -5,8 +5,6 @@ pub(crate) struct Manifest {
     #[serde(rename = "cargo-features", skip_serializing_if = "Vec::is_empty")]
     pub cargo_features: Vec<String>,
     pub package: Package,
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    pub features: BTreeMap<String, Vec<String>>,
     pub dependencies: BTreeMap<String, Dependency>,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub target: BTreeMap<String, TargetDependencies>,

@@ -49,12 +49,20 @@
 //!
 //! **Note:** All test cases in `tests/fail` must be at least staged in git.
 //!
+//! # Environment Variables
+//!
+//! - `ERR_SPAN_CHECK` can be set to `frozen` to make tests fail on mismatch instead of updating the local files
+//!   (useful for CI).
+//! - `ERR_SPAN_CHECK_SPLIT_ON_CHANGE` can be set to `true` to automatically split modified test files into `stable`
+//!   and `nightly` subdirectories.
+//!
 //! See the [README](https://github.com/mich101mich/err_span_check) for more details.
 
 #[macro_use]
 mod message;
 
 mod cargo;
+mod env;
 mod fail_dir;
 mod git;
 mod manifest;
@@ -62,15 +70,9 @@ mod normalize;
 mod project;
 mod runner;
 mod rustflags;
-mod util {
-    pub(crate) mod env;
-    pub(crate) mod extensions;
-    pub(crate) mod features;
-}
 
 pub(crate) use fail_dir::TestFile;
 pub(crate) use project::Project;
-pub(crate) use util::extensions::*;
 
 pub(crate) use anyhow::{Context, Error, Result, bail};
 pub(crate) use serde::{Deserialize, Serialize, de::Deserializer, ser::Serializer};

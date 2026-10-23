@@ -8,9 +8,8 @@ pub(crate) struct Project {
     pub dir: PathBuf,
     pub owned_dir: PathBuf,
     pub target_dir: PathBuf,
+    pub tests_dir: PathBuf,
     pub name: String,
-    pub should_update: bool,
-    pub features: Option<Vec<String>>,
     pub workspace: PathBuf,
     pub path_dependencies: Vec<PathDependency>,
 }
@@ -32,8 +31,6 @@ impl Project {
 
         let source_dir = cargo::manifest_dir()?;
         let source_manifest = parsed::get_manifest(&source_dir)?;
-
-        let mut features = util::features::find();
 
         let path_dependencies = source_manifest
             .dependencies
@@ -58,7 +55,7 @@ impl Project {
         //       other crates like llvm-cov have hardcoded workarounds for trybuild using this path.
         let owned_dir = target_directory.join("tests").join("trybuild");
         let project_dir = owned_dir.join(crate_name);
-        std::fs::create_dir_all(&project_dir).context("failed to create project directory")?;
+        fs_err::create_dir_all(&project_dir).context("failed to create project directory")?;
 
         let project_name = format!("{}-tests", crate_name);
         let manifest = Self::make_manifest(
@@ -69,28 +66,27 @@ impl Project {
             source_manifest,
         )?;
 
-        if let Some(enabled_features) = &mut features {
-            enabled_features.retain(|feature| manifest.features.contains_key(feature));
-        }
-
         let manifest_toml =
             toml::to_string(&manifest).context("failed to serialize manifest to TOML")?;
-        std::fs::write(project_dir.join("Cargo.toml"), manifest_toml)
+        fs_err::write(project_dir.join("Cargo.toml"), manifest_toml)
             .context("failed to write Cargo.toml")?;
 
         let main_rs = b"\
             #![allow(unused_crate_dependencies, missing_docs)]\n\
             fn main() {}\n\
         ";
-        std::fs::write(project_dir.join("main.rs"), main_rs).context("failed to write main.rs")?;
+        fs_err::write(project_dir.join("main.rs"), main_rs)
+            .context("failed to write test setup")?;
+
+        let tests_dir = project_dir.join("tests").into_std_path_buf();
+        fs_err::create_dir_all(&tests_dir).context("failed to create tests directory")?;
 
         let mut project = Project {
             dir: project_dir.into_std_path_buf(),
             owned_dir: owned_dir.into_std_path_buf(),
             target_dir: target_directory.into_std_path_buf(),
+            tests_dir,
             name: project_name,
-            should_update: util::env::should_update()?,
-            features,
             workspace: workspace_root.into_std_path_buf(),
             path_dependencies,
         };
@@ -142,7 +138,7 @@ impl Project {
                     version: None,
                     path: Some(source_dir.to_path_buf()),
                     optional: false,
-                    default_features: Some(false),
+                    default_features: Some(true),
                     features: Vec::new(),
                     git: None,
                     branch: None,
@@ -160,29 +156,6 @@ impl Project {
             target.dependencies.extend(dev_dependencies);
         }
 
-        let mut features = source_manifest.features;
-        for (feature, enables) in &mut features {
-            enables.retain(|en| {
-                let Some(dep_name) = en.strip_prefix("dep:") else {
-                    return false;
-                };
-                if let Some(Dependency { optional: true, .. }) = dependencies.get(dep_name) {
-                    return true;
-                }
-                for target in targets.values() {
-                    if let Some(Dependency { optional: true, .. }) =
-                        target.dependencies.get(dep_name)
-                    {
-                        return true;
-                    }
-                }
-                false
-            });
-            if has_lib_target {
-                enables.insert(0, format!("{}/{}", crate_name, feature));
-            }
-        }
-
         let mut manifest = generated::Manifest {
             cargo_features: source_manifest.cargo_features,
             package: generated::Package {
@@ -192,7 +165,6 @@ impl Project {
                 resolver: source_manifest.package.resolver,
                 publish: false,
             },
-            features,
             dependencies,
             target: targets,
             bins: Vec::new(),
