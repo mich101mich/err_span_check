@@ -24,7 +24,7 @@ exclude = [
 members = ["example"]
 
 [dependencies]
-anyhow = "1.0.39"
+anyhow = "1.0.103"
 cargo_metadata = "0.23.0"
 fs-err = { version = "3.2.0", features = ["debug"] }
 rustc_version = "0.4.0"
